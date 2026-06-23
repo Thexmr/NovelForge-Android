@@ -4,6 +4,7 @@ import com.novelforge.android.ai.AiClient
 import com.novelforge.android.ai.AiConfig
 import com.novelforge.android.ai.PromptFactory
 import com.novelforge.android.domain.Chapter
+import com.novelforge.android.domain.ContentSafetyFilter
 import com.novelforge.android.domain.NarrativeSignature
 import com.novelforge.android.domain.Project
 import com.novelforge.android.domain.ProjectStatus
@@ -81,19 +82,26 @@ class NovelGenerator(config: AiConfig) {
         var storySoFar = ""
         project.chapters.forEachIndexed { index, ch ->
             onProgress(GenProgress("Kapitel ${ch.number} schreiben …", 0.30f + 0.6f * index / project.chapters.size))
-            val text = ai.chat(
-                system = "Du bist ein Bestseller-Autor. Gib ausschließlich den Prosatext zurück.",
-                prompt = PromptFactory.draftChapter(
-                    project.language, project.styleProfile, project.genre, project.title,
-                    ch.number, ch.title, ch.goal, ch.conflict,
-                    project.profile.narrativePerspective, project.profile.tense,
-                    storySoFar, wordsPerChapter,
-                    isFirst = index == 0, isLast = index == project.chapters.size - 1,
-                    project.styleSignature, project.spiceLevel
-                ),
-                temperature = 0.8, maxTokens = (wordsPerChapter * 3).coerceIn(2000, 8000)
-            )
-            ch.text = text.trim()
+            val raw = try {
+                ai.chat(
+                    system = "Du bist ein Bestseller-Autor. Gib ausschließlich den Prosatext zurück.",
+                    prompt = PromptFactory.draftChapter(
+                        project.language, project.styleProfile, project.genre, project.title,
+                        ch.number, ch.title, ch.goal, ch.conflict,
+                        project.profile.narrativePerspective, project.profile.tense,
+                        storySoFar, wordsPerChapter,
+                        isFirst = index == 0, isLast = index == project.chapters.size - 1,
+                        project.styleSignature, project.spiceLevel
+                    ),
+                    temperature = 0.8, maxTokens = (wordsPerChapter * 3).coerceIn(2000, 8000)
+                ).trim()
+            } catch (e: Exception) {
+                // Ein einzelnes fehlgeschlagenes Kapitel beendet NICHT das ganze Buch.
+                "[Kapitel ${ch.number} konnte nicht erzeugt werden (${e.message}). Bitte einzeln neu erzeugen.]"
+            }
+            // HARTE SICHERHEITSSPERRE: sexuelle Inhalte mit Kindern/Minderjährigen werden NIE gespeichert.
+            ch.text = if (ContentSafetyFilter.isSafe(raw)) raw
+                else "[Kapitel ${ch.number} vom Schutzfilter blockiert – an intimen Szenen dürfen ausschließlich erwachsene (18+) Figuren beteiligt sein. Bitte neu erzeugen.]"
             ch.wordCount = wordCount(ch.text)
             storySoFar = (storySoFar + "\n\n" + ch.text).takeLast(6000)
         }

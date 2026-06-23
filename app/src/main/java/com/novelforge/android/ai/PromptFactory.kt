@@ -1,5 +1,6 @@
 package com.novelforge.android.ai
 
+import com.novelforge.android.domain.ContentSafetyFilter
 import com.novelforge.android.domain.SpiceLevel
 
 /**
@@ -25,7 +26,8 @@ object PromptFactory {
         Stilprofil: $style
         Zielumfang: ca. $pageCount Seiten
         $tropeBlock${block(bookSignature)}
-        VERBINDLICH: Entwickle das Konzept so, dass es exakt zum Titel "$title" und zum Genre "$genre" passt und den Titel erzählerisch einlöst. Nimm die Kernerwartung des Genres ernst.
+        VERBINDLICH: Entwickle das Konzept so, dass es exakt zum Titel "$title" und zum Genre "$genre" passt und den Titel erzählerisch einlöst. Diese Bindung gilt fürs GANZE Buch: jede Hauptfigur, der Hauptkonflikt und jede Szene erfüllen das Genre "$genre" und lösen das Titel-Versprechen ein – der fertige Roman liefert genau das, was Titel und Genre versprechen.
+        BESTSELLER-KERN: zugespitzte High-Concept-Prämisse (in EINEM Satz fassbar, kein generisches "Frau kehrt heim und findet Geheimnisse"); eine AKTIVE Hauptfigur, die die Handlung durch eigene Entscheidungen treibt; ein scharfer, präsenter Gegenpart mit echter Chemie/Reibung; das Genre wird in Szenen wirklich GELIEFERT (bei (Dark) Romance/Slow Burn: spürbar eskalierende Anziehung mit Auszahlung, kein "No Burn").
 
         Antworte ausschließlich in diesem Format (Labels exakt so verwenden):
         PRÄMISSE: [1-2 Sätze]
@@ -91,7 +93,12 @@ object PromptFactory {
         ${if (storySoFar.isBlank()) "Dies ist der Anfang des Buches." else storySoFar.take(6000)}
         $position
 
-        HANDWERK: Zeigen statt benennen (Emotion nie behaupten). Variiere Satzlänge stark. Beginne mitten in der Handlung. Konkrete Sinnesdetails statt generischer. Kapitelende mit einem Haken. Reiner Fließtext – keine Markdown-Symbole, keine Überschriften. Gib ausschließlich den fertigen Prosatext aus.
+        ${ContentSafetyFilter.promptDirective}
+
+        HANDWERK: Zeigen statt benennen (Emotion nie behaupten). Variiere Satzlänge stark. Beginne mitten in der Handlung. Konkrete Sinnesdetails statt generischer. Kapitelende mit einem Haken. Reiner Fließtext – keine Markdown-Symbole, keine Überschriften.
+        ZEITGEMÄSSE SPRACHE: Schreibe wie ein aktueller deutschsprachiger Bestseller von heute – klar, natürlich, modern. KEINE altertümliche oder geschwollene Sprache ("alsbald", "ward", "Antlitz", "Maid", "auf dass") und kein Pathos. Der Text muss inhaltlich Sinn ergeben und logisch zusammenhängen.
+        ERZÄHLTEMPO VARIIEREN: Action, Konfrontation und Wendepunkte schnell und knapp (kurze Sätze, wenig Innenschau); ruhige Momente dürfen atmen, aber kein durchgehend langsames Tempo. Lange Wetter-/Stimmungspassagen, die die Handlung nicht vorantreiben, vermeiden.
+        Gib ausschließlich den fertigen Prosatext aus.
     """.trimIndent()
     }
 
@@ -111,7 +118,7 @@ object PromptFactory {
         Keine Hinweise auf KI/Automatisierung. Optimiere TITEL, UNTERTITEL und KEYWORDS für die Amazon-Suche (ohne Keyword-Spam).
 
         Antworte exakt in diesem Format:
-        VERKAUFSTITEL: [klickstarker Titel, 2-6 Wörter]
+        VERKAUFSTITEL: [EXTREM starker, viraler Titel (2-6 Wörter), der beim Scrollen sofort zum Klicken zwingt – ABER sofort verständlich und natürlich wie ein echter Verlags-Bestseller, KEINE komischen/kryptischen oder paradoxen Wort-Collagen. Muss zum tatsächlichen Inhalt oben und zum Genre "$genre" passen, kein irreführender Clickbait. Keine Anführungszeichen.]
         UNTERTITEL: [SEO-Untertitel mit den stärksten Suchbegriffen, 5-12 Wörter]
         VERKAUFSTEXT: [150-200 Wörter, scanbare Absätze, Hook-Taglinie, steigende Stakes, Schlusszeile, eine "Für Fans von …"-Zeile]
         KEYWORDS: [genau 7 Long-Tail-Suchbegriffe, kommagetrennt]
