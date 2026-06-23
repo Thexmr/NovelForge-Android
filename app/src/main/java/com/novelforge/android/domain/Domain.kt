@@ -15,6 +15,16 @@ data class Chapter(
     var wordCount: Int = 0,
 )
 
+data class Character(
+    val name: String,
+    var role: String = "",
+    var age: String = "",
+    var occupation: String = "",
+    var goal: String = "",
+    var fear: String = "",
+    var weakness: String = "",
+)
+
 data class BookProfile(
     var premise: String = "",
     var logline: String = "",
@@ -48,6 +58,7 @@ data class Project(
     var status: ProjectStatus = ProjectStatus.CREATED,
     var profile: BookProfile = BookProfile(),
     val chapters: MutableList<Chapter> = mutableListOf(),
+    val characters: MutableList<Character> = mutableListOf(),
     val createdAt: Long = 0L, // wird beim Anlegen gesetzt (kein Date in der Domain)
 ) {
     val wordCount: Int get() = chapters.sumOf { it.wordCount }

@@ -562,6 +562,22 @@ fun ProjectScreen(vm: AppViewModel, projectId: String) {
             }
         }
 
+        if (project.characters.isNotEmpty()) {
+            SectionCard("Figuren") {
+                project.characters.forEach { c ->
+                    Text(
+                        c.name + if (c.role.isNotBlank()) " · ${c.role}" else "",
+                        style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium
+                    )
+                    if (c.goal.isNotBlank()) {
+                        Text("Ziel: ${c.goal}", style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Spacer(Modifier.height(6.dp))
+                }
+            }
+        }
+
         if (project.chapters.isNotEmpty()) {
             SectionLabel("Manuskript")
             project.chapters.forEach { ch ->

@@ -79,11 +79,24 @@ object PromptFactory {
         KAPITEL|Nummer|Titel|Ziel des Kapitels|Zentraler Konflikt
     """.trimIndent()
 
+    fun characters(title: String, genre: String, plot: String): String = """
+        Entwickle das Figurenensemble für den Roman "$title" (Genre: $genre).
+
+        Plot:
+        ${plot.take(4000)}
+
+        Erstelle Protagonist, Antagonist und 3-5 wichtige Nebenfiguren. Alle an romantischen oder
+        intimen Handlungen beteiligten Figuren sind eindeutig erwachsen (mindestens 18 Jahre).
+        Gib für JEDE Figur GENAU eine Zeile aus (Felder mit | getrennt):
+        FIGUR|Name|Rolle|Alter|Beruf|Ziel|Angst|Schwäche
+    """.trimIndent()
+
     fun draftChapter(
         language: String, style: String, genre: String, bookTitle: String,
         chapterNumber: Int, chapterTitle: String, chapterGoal: String, chapterConflict: String,
         perspective: String, tense: String, storySoFar: String, targetWords: Int,
         isFirst: Boolean, isLast: Boolean, bookSignature: String = "", spiceLevel: Int = 0,
+        charactersSummary: String = "",
     ): String {
         val spice = SpiceLevel.generationDirective(spiceLevel)
         val position = when {
@@ -97,6 +110,7 @@ object PromptFactory {
         ${block(bookSignature)}${block(spice)}
         Kapitelziel: $chapterGoal
         Zentraler Konflikt: $chapterConflict
+        ${if (charactersSummary.isBlank()) "" else "FIGUREN (Namen und Eigenschaften konsistent halten):\n$charactersSummary"}
         Zielumfang: ca. $targetWords Wörter (Szene ausschreiben, nicht zusammenfassen).
 
         Bisherige Handlung:

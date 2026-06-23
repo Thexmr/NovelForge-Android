@@ -4,6 +4,7 @@ import com.novelforge.android.ai.AiClient
 import com.novelforge.android.ai.AiConfig
 import com.novelforge.android.ai.PromptFactory
 import com.novelforge.android.domain.Chapter
+import com.novelforge.android.domain.Character
 import com.novelforge.android.domain.ContentQuality
 import com.novelforge.android.domain.ContentSafetyFilter
 import com.novelforge.android.domain.NarrativeSignature
@@ -78,6 +79,26 @@ class NovelGenerator(config: AiConfig) {
             throw IllegalStateException("Kein Kapitelplan erhalten.")
         }
 
+        // 3b) Figurenensemble (Story-Bible) für konsistente, benannte Figuren.
+        onProgress(GenProgress("Figuren entwickeln …", 0.28f))
+        val charText = try {
+            ai.chat(
+                "Du bist ein Charakterentwickler für Romane.",
+                PromptFactory.characters(project.title, project.genre, plot),
+                temperature = 0.7, maxTokens = 1500
+            )
+        } catch (e: Exception) { "" }
+        project.characters.clear()
+        project.characters.addAll(parseCharacters(charText))
+        val charactersSummary = project.characters.joinToString("\n") { c ->
+            buildString {
+                append(c.name)
+                if (c.role.isNotBlank()) append(" (${c.role})")
+                if (c.goal.isNotBlank()) append(" – Ziel: ${c.goal}")
+                if (c.weakness.isNotBlank()) append("; Schwäche: ${c.weakness}")
+            }
+        }
+
         // 4) Kapitel schreiben
         val wordsPerChapter = project.targetPageCount * 250 / project.chapters.size
         var storySoFar = ""
@@ -89,7 +110,7 @@ class NovelGenerator(config: AiConfig) {
                 project.profile.narrativePerspective, project.profile.tense,
                 storySoFar, wordsPerChapter,
                 isFirst = index == 0, isLast = index == project.chapters.size - 1,
-                project.styleSignature, project.spiceLevel
+                project.styleSignature, project.spiceLevel, charactersSummary
             )
             val minWords = maxOf(120, (wordsPerChapter * 0.6).toInt())
             var best = ""
@@ -173,6 +194,28 @@ class NovelGenerator(config: AiConfig) {
                     title = parts[1].ifBlank { "Kapitel $number" },
                     goal = parts.getOrElse(2) { "" },
                     conflict = parts.getOrElse(3) { "" },
+                )
+            )
+        }
+        return result
+    }
+
+    private fun parseCharacters(text: String): List<Character> {
+        val result = mutableListOf<Character>()
+        for (line in text.lines()) {
+            if (!line.contains("FIGUR|")) continue
+            val parts = line.substringAfter("FIGUR|").split("|").map { it.trim() }
+            val name = parts.getOrElse(0) { "" }
+            if (name.isBlank()) continue
+            result.add(
+                Character(
+                    name = name,
+                    role = parts.getOrElse(1) { "" },
+                    age = parts.getOrElse(2) { "" },
+                    occupation = parts.getOrElse(3) { "" },
+                    goal = parts.getOrElse(4) { "" },
+                    fear = parts.getOrElse(5) { "" },
+                    weakness = parts.getOrElse(6) { "" },
                 )
             )
         }
