@@ -35,6 +35,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -148,6 +149,10 @@ fun DashboardScreen(vm: AppViewModel, onOpen: (String) -> Unit) {
     val projects by vm.projects.collectAsState()
     val progress by vm.progress.collectAsState()
     val generatingId by vm.generatingId.collectAsState()
+    val auto by vm.autoRunning.collectAsState()
+    val completed by vm.completed.collectAsState()
+    val config by vm.config.collectAsState()
+    val apiMissing = config.apiKey.isBlank()
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         BrandHeader("NovelForge", "KI-Romanproduktion · KDP")
@@ -159,6 +164,33 @@ fun DashboardScreen(vm: AppViewModel, onOpen: (String) -> Unit) {
                 MaterialTheme.colorScheme.tertiary, Modifier.weight(1f))
             StatTile(words(projects.sumOf { it.wordCount }), "Wörter",
                 MaterialTheme.colorScheme.onSurface, Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(16.dp))
+
+        Card(Modifier.fillMaxWidth()) {
+            Row(
+                Modifier.fillMaxWidth().padding(14.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Auto-Modus", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (auto) "Läuft im Hintergrund · $completed fertig"
+                        else "Erzeugt automatisch Buch um Buch – läuft weiter, während du dein Handy nutzt.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                if (auto) {
+                    Button(
+                        onClick = { vm.stopGeneration() },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) { Text("Stop") }
+                } else {
+                    Button(onClick = { vm.startAuto() }, enabled = !apiMissing) { Text("Start") }
+                }
+            }
         }
         Spacer(Modifier.height(16.dp))
 
@@ -182,6 +214,12 @@ fun DashboardScreen(vm: AppViewModel, onOpen: (String) -> Unit) {
                     Text(p.phase, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(9.dp))
                     LinearProgressIndicator(progress = { p.fraction }, modifier = Modifier.fillMaxWidth())
+                    if (!auto) {
+                        Spacer(Modifier.height(10.dp))
+                        OutlinedButton(onClick = { vm.stopGeneration() }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Generierung stoppen")
+                        }
+                    }
                 }
             }
             Spacer(Modifier.height(16.dp))

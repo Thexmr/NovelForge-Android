@@ -7,13 +7,11 @@ import com.novelforge.android.ai.AiConfig
 import com.novelforge.android.data.ProjectRepository
 import com.novelforge.android.data.SettingsStore
 import com.novelforge.android.domain.Project
-import com.novelforge.android.domain.ProjectStatus
 import com.novelforge.android.generator.GenProgress
-import com.novelforge.android.generator.NovelGenerator
-import kotlinx.coroutines.flow.MutableStateFlow
+import com.novelforge.android.generator.GenerationController
+import com.novelforge.android.service.GenerationService
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -26,42 +24,29 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     val projects: StateFlow<List<Project>> = ProjectRepository.projects
 
-    private val _progress = MutableStateFlow<GenProgress?>(null)
-    val progress: StateFlow<GenProgress?> = _progress
-
-    private val _generatingId = MutableStateFlow<String?>(null)
-    val generatingId: StateFlow<String?> = _generatingId
-
-    private val _error = MutableStateFlow<String?>(null)
-    val error: StateFlow<String?> = _error
+    // Generierungs-Zustand kommt aus dem prozessweiten Controller (Hintergrund-Service).
+    val progress: StateFlow<GenProgress?> = GenerationController.progress
+    val generatingId: StateFlow<String?> = GenerationController.activeId
+    val error: StateFlow<String?> = GenerationController.error
+    val autoRunning: StateFlow<Boolean> = GenerationController.auto
+    val completed: StateFlow<Int> = GenerationController.completed
 
     fun saveSettings(config: AiConfig) {
         viewModelScope.launch { settings.save(config) }
     }
 
-    fun clearError() { _error.value = null }
+    fun clearError() { GenerationController.clearError() }
 
-    /** Legt ein Projekt an und startet die Generierung. Gibt die Projekt-ID zurück. */
+    /** Legt ein Projekt an und startet die Generierung im Hintergrund-Foreground-Service. */
     fun createAndGenerate(project: Project): String {
         ProjectRepository.upsert(project)
-        viewModelScope.launch {
-            _error.value = null
-            _generatingId.value = project.id
-            try {
-                val cfg = settings.configFlow.first()
-                NovelGenerator(cfg).generate(project) { p ->
-                    _progress.value = p
-                    ProjectRepository.touch()
-                }
-            } catch (e: Exception) {
-                project.status = ProjectStatus.FAILED
-                _error.value = e.message ?: "Unbekannter Fehler"
-            } finally {
-                ProjectRepository.touch()
-                _generatingId.value = null
-                _progress.value = null
-            }
-        }
+        GenerationService.generate(getApplication<Application>(), project.id)
         return project.id
     }
+
+    /** Startet die Dauerproduktion (Auto-Modus) im Hintergrund. */
+    fun startAuto() { GenerationService.startAuto(getApplication<Application>()) }
+
+    /** Stoppt die laufende Generierung bzw. den Auto-Modus. */
+    fun stopGeneration() { GenerationService.stop(getApplication<Application>()) }
 }

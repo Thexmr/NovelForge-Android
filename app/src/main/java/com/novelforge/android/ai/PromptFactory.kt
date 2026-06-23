@@ -12,6 +12,16 @@ object PromptFactory {
 
     private fun block(s: String) = if (s.isBlank()) "" else "\n$s\n"
 
+    fun bookIdea(genre: String, language: String): String = """
+        Erfinde EINE starke, vermarktbare Buchidee (Genre: $genre, Sprache: $language) mit einem
+        viralen, aber sofort verständlichen Titel (kein kryptisches Wortspiel, keine paradoxen
+        Wort-Collagen, kein Berufs-Ort-Klischee). Der Titel klingt wie ein echter Verlags-Bestseller.
+
+        Antworte exakt in diesem Format:
+        TITEL: [2-6 Wörter, klickstark UND klar]
+        PRÄMISSE: [2 Sätze – Satz 1 ist der High-Concept-Hook, Satz 2 nennt Konflikt und Einsatz]
+    """.trimIndent()
+
     fun concept(
         title: String, genre: String, language: String, style: String,
         pageCount: Int, tropes: String = "", bookSignature: String = "",
