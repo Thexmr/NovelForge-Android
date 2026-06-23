@@ -38,6 +38,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearError() { GenerationController.clearError() }
 
+    /** Löscht ein Buch dauerhaft (inkl. Persistenz-Schnappschuss). */
+    fun deleteProject(id: String) { ProjectRepository.delete(id) }
+
     /** Legt ein Projekt an und startet die Generierung im Hintergrund-Foreground-Service. */
     fun createAndGenerate(project: Project): String {
         ProjectRepository.upsert(project)

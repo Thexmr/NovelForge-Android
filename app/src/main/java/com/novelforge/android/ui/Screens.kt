@@ -33,6 +33,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -45,6 +46,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -67,6 +69,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.novelforge.android.ai.AiConfig
+import com.novelforge.android.domain.Chapter
 import com.novelforge.android.domain.Genres
 import com.novelforge.android.domain.Project
 import com.novelforge.android.domain.ProjectStatus
@@ -544,7 +547,10 @@ fun SettingsScreen(vm: AppViewModel) {
 // ---- Projekt-Detail --------------------------------------------------------------
 
 @Composable
-fun ProjectScreen(vm: AppViewModel, projectId: String, onOpenProject: (String) -> Unit = {}) {
+fun ProjectScreen(
+    vm: AppViewModel, projectId: String,
+    onOpenProject: (String) -> Unit = {}, onBack: () -> Unit = {},
+) {
     val projects by vm.projects.collectAsState()
     val progress by vm.progress.collectAsState()
     val error by vm.error.collectAsState()
@@ -557,6 +563,7 @@ fun ProjectScreen(vm: AppViewModel, projectId: String, onOpenProject: (String) -
     }
 
     val isGenerating = generatingId == project.id
+    var confirmDelete by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val epubLauncher = rememberLauncherForActivityResult(
@@ -713,10 +720,51 @@ fun ProjectScreen(vm: AppViewModel, projectId: String, onOpenProject: (String) -
 
         if (project.chapters.isNotEmpty()) {
             SectionLabel("Manuskript")
-            project.chapters.forEach { ch ->
-                SectionCard("Kapitel ${ch.number}: ${ch.title}") {
-                    Text(ch.text.ifBlank { ch.goal }.take(2000), style = MaterialTheme.typography.bodySmall)
+            project.chapters.forEach { ch -> ChapterCard(ch) }
+        }
+
+        if (!isGenerating) {
+            Spacer(Modifier.height(4.dp))
+            OutlinedButton(
+                onClick = { confirmDelete = true },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+            ) { Text("Buch löschen") }
+        }
+
+        if (confirmDelete) {
+            AlertDialog(
+                onDismissRequest = { confirmDelete = false },
+                title = { Text("Buch löschen?") },
+                text = { Text("${project.title} wird dauerhaft entfernt.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        confirmDelete = false
+                        vm.deleteProject(project.id)
+                        onBack()
+                    }) { Text("Löschen", color = MaterialTheme.colorScheme.error) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { confirmDelete = false }) { Text("Abbrechen") }
                 }
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChapterCard(ch: Chapter) {
+    var expanded by rememberSaveable(ch.number) { mutableStateOf(false) }
+    val full = ch.text.ifBlank { ch.goal }
+    SectionCard("Kapitel ${ch.number}: ${ch.title}") {
+        Text(
+            if (expanded || full.length <= 600) full else full.take(600) + " …",
+            style = MaterialTheme.typography.bodySmall
+        )
+        if (full.length > 600) {
+            Spacer(Modifier.height(6.dp))
+            OutlinedButton(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth()) {
+                Text(if (expanded) "Einklappen" else "Ganzes Kapitel lesen")
             }
         }
     }

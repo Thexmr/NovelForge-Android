@@ -59,17 +59,25 @@ object ProjectRepository {
     private var file: File? = null
     @Volatile private var lastPersist = 0L
 
-    /** Einmalig beim App-Start aufrufen: lädt den gespeicherten Bestand. */
+    /** Einmalig beim App-Start aufrufen: lädt den gespeicherten Bestand (im Hintergrund, kein ANR). */
     fun init(context: Context) {
         if (file != null) return
         val f = File(context.applicationContext.filesDir, "projects.json")
         file = f
-        runCatching {
-            if (f.exists()) {
-                val loaded = ProjectJson.decodeList(f.readText())
-                if (loaded.isNotEmpty()) _projects.value = loaded
+        ioScope.launch {
+            runCatching {
+                if (f.exists()) {
+                    val loaded = ProjectJson.decodeList(f.readText())
+                    // Nicht überschreiben, falls in der Zwischenzeit schon etwas angelegt wurde.
+                    if (loaded.isNotEmpty() && _projects.value.isEmpty()) _projects.value = loaded
+                }
             }
         }
+    }
+
+    fun delete(id: String) {
+        _projects.value = _projects.value.filterNot { it.id == id }
+        persist(force = true)
     }
 
     fun upsert(project: Project) {

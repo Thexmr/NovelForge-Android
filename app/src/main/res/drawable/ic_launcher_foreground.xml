@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Markenmonogramm „N" in Champagner-Gold, in der Schutzzone der adaptiven Icon-Fläche. -->
+    <path
+        android:pathData="M40,74 L40,34 L68,74 L68,34"
+        android:strokeColor="#D3B373"
+        android:strokeWidth="8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+</vector>

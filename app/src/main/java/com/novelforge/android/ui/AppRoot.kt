@@ -109,7 +109,8 @@ private fun AppNavHost(nav: NavHostController, vm: AppViewModel) {
             ProjectScreen(
                 vm,
                 projectId = entry.arguments?.getString("id").orEmpty(),
-                onOpenProject = { id -> nav.navigate("project/$id") }
+                onOpenProject = { id -> nav.navigate("project/$id") },
+                onBack = { if (!nav.popBackStack()) nav.navigate("dashboard") }
             )
         }
     }
