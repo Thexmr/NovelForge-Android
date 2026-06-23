@@ -1,5 +1,15 @@
 package com.novelforge.android.ui
 
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.border
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import com.novelforge.android.export.ExportBuilder
+import com.novelforge.android.ui.theme.NoirGold
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -68,14 +78,17 @@ private val accents = listOf(Color(0xFF6B73FF), Color(0xFF8F80EB), Color(0xFF5DC
 private fun accentFor(seed: String): Color = accents[(seed.hashCode() and 0x7FFFFFFF) % accents.size]
 
 @Composable
-private fun Monogram(size: Int = 38) {
+private fun Monogram(size: Int = 42) {
+    val shape = RoundedCornerShape((size / 3.2f).dp)
     Box(
         Modifier
             .size(size.dp)
-            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape((size / 3.4f).dp)),
+            .background(Brush.linearGradient(listOf(Color(0xFF6B73FF), Color(0xFF8F80EB))), shape)
+            .border(1.dp, NoirGold.copy(alpha = 0.55f), shape),
         contentAlignment = Alignment.Center
     ) {
-        Text("N", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = (size * 0.5f).sp)
+        Text("N", color = Color.White, fontFamily = FontFamily.Serif,
+            fontWeight = FontWeight.SemiBold, fontSize = (size * 0.5f).sp)
     }
 }
 
@@ -84,9 +97,10 @@ private fun BrandHeader(title: String, subtitle: String) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Monogram()
         Column {
-            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text(title, style = MaterialTheme.typography.headlineSmall, fontFamily = FontFamily.Serif,
+                fontWeight = FontWeight.Medium, letterSpacing = 0.5.sp)
             Text(subtitle.uppercase(), style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant, letterSpacing = 1.sp)
+                color = NoirGold.copy(alpha = 0.85f), letterSpacing = 2.sp)
         }
     }
 }
@@ -203,7 +217,8 @@ private fun ProjectRow(project: Project, onClick: () -> Unit) {
         Row(Modifier.height(IntrinsicSize.Min)) {
             Box(Modifier.width(4.dp).fillMaxHeight().background(accentFor(project.id)))
             Column(Modifier.padding(14.dp)) {
-                Text(project.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(project.title, style = MaterialTheme.typography.titleMedium,
+                    fontFamily = FontFamily.Serif, fontWeight = FontWeight.Medium)
                 Text("${project.authorName} · ${project.genre}", style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(8.dp))
@@ -404,12 +419,21 @@ fun ProjectScreen(vm: AppViewModel, projectId: String) {
     }
 
     val isGenerating = generatingId == project.id
+    val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
+    val epubLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/epub+zip")
+    ) { uri -> uri?.let { context.contentResolver.openOutputStream(it)?.use { os -> os.write(ExportBuilder.epubBytes(project)) } } }
+    val txtLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri -> uri?.let { context.contentResolver.openOutputStream(it)?.use { os -> os.write(ExportBuilder.manuscriptText(project).toByteArray()) } } }
 
     Column(
         Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(project.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text(project.title, style = MaterialTheme.typography.headlineSmall,
+            fontFamily = FontFamily.Serif, fontWeight = FontWeight.Medium)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             StatusBadge(project.status)
             Text("${words(project.wordCount)} Wörter · ${project.chapters.size} Kapitel",
@@ -439,6 +463,34 @@ fun ProjectScreen(vm: AppViewModel, projectId: String) {
             ) {
                 Text("Fehler: $it", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(14.dp),
                     style = MaterialTheme.typography.bodySmall)
+            }
+        }
+
+        if (project.chapters.any { it.text.isNotBlank() }) {
+            SectionCard("Export") {
+                Text("Wähle ein Format – auf dem Gerät speichern oder teilen.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { epubLauncher.launch("${project.title}.epub") }, modifier = Modifier.weight(1f)) { Text("EPUB") }
+                    OutlinedButton(onClick = { txtLauncher.launch("${project.title}.txt") }, modifier = Modifier.weight(1f)) { Text(".txt") }
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            val send = Intent(Intent.ACTION_SEND).setType("text/plain")
+                                .putExtra(Intent.EXTRA_SUBJECT, project.title)
+                                .putExtra(Intent.EXTRA_TEXT, ExportBuilder.manuscriptText(project))
+                            context.startActivity(Intent.createChooser(send, "Manuskript teilen"))
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Teilen") }
+                    OutlinedButton(
+                        onClick = { clipboard.setText(AnnotatedString(ExportBuilder.kdpSheet(project))) },
+                        modifier = Modifier.weight(1f)
+                    ) { Text("KDP kopieren") }
+                }
             }
         }
 
