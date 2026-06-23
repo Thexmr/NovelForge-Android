@@ -3,8 +3,8 @@
     <!-- Fenster-Basistheme (vor dem Compose-Draw). Farben kommen aus dem Compose-Theme.
          Plattform-Parent → keine com.google.android.material-Abhängigkeit nötig. -->
     <style name="Theme.NovelForge" parent="android:Theme.Material.NoActionBar">
-        <item name="android:statusBarColor">#0F0F15</item>
-        <item name="android:navigationBarColor">#0F0F15</item>
-        <item name="android:windowBackground">#0F0F15</item>
+        <item name="android:statusBarColor">#0C0D12</item>
+        <item name="android:navigationBarColor">#0C0D12</item>
+        <item name="android:windowBackground">#0C0D12</item>
     </style>
 </resources>

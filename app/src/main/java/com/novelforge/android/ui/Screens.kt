@@ -3,18 +3,15 @@ package com.novelforge.android.ui
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.border
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.AnnotatedString
-import com.novelforge.android.export.ExportBuilder
-import com.novelforge.android.ui.theme.NoirGold
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -25,6 +22,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -52,31 +50,77 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.novelforge.android.ai.AiConfig
 import com.novelforge.android.domain.Genres
 import com.novelforge.android.domain.Project
 import com.novelforge.android.domain.ProjectStatus
-import com.novelforge.android.domain.SpiceLevel
+import com.novelforge.android.export.ExportBuilder
+import com.novelforge.android.ui.theme.Indigo
+import com.novelforge.android.ui.theme.NoirGold
+import com.novelforge.android.ui.theme.Violet
 import java.text.NumberFormat
 import java.util.Locale
 
-// ---- gemeinsame Bausteine --------------------------------------------------------
+// ---- Responsivität ---------------------------------------------------------------
+// Eine einzige Schwelle entscheidet, ob breit (Querformat/Tablet) layoutet wird.
+private const val WIDE_DP = 600
 
 private fun words(n: Int): String = NumberFormat.getInstance(Locale.GERMANY).format(n)
 
-private val accents = listOf(Color(0xFF6B73FF), Color(0xFF8F80EB), Color(0xFF5DCAA5), Color(0xFFE3B24A))
-private fun accentFor(seed: String): Color = accents[(seed.hashCode() and 0x7FFFFFFF) % accents.size]
+// Markentreue Akzente (kein zufälliger Regenbogen – nur Indigo/Gold/Violett).
+private val accentTrio = listOf(Indigo, NoirGold, Violet)
+private fun accentFor(seed: String): Color = accentTrio[(seed.hashCode() and 0x7FFFFFFF) % accentTrio.size]
+
+/**
+ * Scrollender Bildschirm-Rahmen: zentriert, auf lesbare Breite begrenzt und mit
+ * orientierungsabhängigem Innenabstand. `wide` steht dem Inhalt für Spaltenlayouts bereit.
+ */
+@Composable
+private fun ScrollScreen(content: @Composable ColumnScope.(wide: Boolean) -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val wide = maxWidth >= WIDE_DP.dp
+        val maxW = if (wide) 760.dp else maxWidth
+        Column(
+            Modifier
+                .align(Alignment.TopCenter)
+                .widthIn(max = maxW)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = if (wide) 24.dp else 16.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) { content(wide) }
+    }
+}
+
+/** Zwei Felder: nebeneinander auf breiten Schirmen, gestapelt auf schmalen. */
+@Composable
+private fun FieldPair(wide: Boolean, a: @Composable () -> Unit, b: @Composable () -> Unit) {
+    if (wide) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(Modifier.weight(1f)) { a() }
+            Box(Modifier.weight(1f)) { b() }
+        }
+    } else {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { a(); b() }
+    }
+}
+
+// ---- gemeinsame Bausteine --------------------------------------------------------
 
 @Composable
 private fun Monogram(size: Int = 42) {
@@ -84,7 +128,7 @@ private fun Monogram(size: Int = 42) {
     Box(
         Modifier
             .size(size.dp)
-            .background(Brush.linearGradient(listOf(Color(0xFF6B73FF), Color(0xFF8F80EB))), shape)
+            .background(Brush.linearGradient(listOf(Indigo, Violet)), shape)
             .border(1.dp, NoirGold.copy(alpha = 0.55f), shape),
         contentAlignment = Alignment.Center
     ) {
@@ -98,8 +142,8 @@ private fun BrandHeader(title: String, subtitle: String) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Monogram()
         Column {
-            Text(title, style = MaterialTheme.typography.headlineSmall, fontFamily = FontFamily.Serif,
-                fontWeight = FontWeight.Medium, letterSpacing = 0.5.sp)
+            Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Medium,
+                letterSpacing = 0.5.sp)
             Text(subtitle.uppercase(), style = MaterialTheme.typography.labelSmall,
                 color = NoirGold.copy(alpha = 0.85f), letterSpacing = 2.sp)
         }
@@ -115,7 +159,7 @@ private fun SectionLabel(text: String) {
 
 @Composable
 private fun StatTile(value: String, label: String, color: Color, modifier: Modifier = Modifier) {
-    Card(modifier, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+    Card(modifier, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 11.dp)) {
             Text(value, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold,
                 fontSize = 20.sp, color = color)
@@ -142,6 +186,17 @@ private fun StatusBadge(status: ProjectStatus) {
     }
 }
 
+@Composable
+private fun SectionCard(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp)) {
+            SectionLabel(title)
+            Spacer(Modifier.height(6.dp))
+            content()
+        }
+    }
+}
+
 // ---- Dashboard -------------------------------------------------------------------
 
 @Composable
@@ -154,95 +209,136 @@ fun DashboardScreen(vm: AppViewModel, onOpen: (String) -> Unit) {
     val config by vm.config.collectAsState()
     val apiMissing = config.apiKey.isBlank()
 
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
-        BrandHeader("NovelForge", "KI-Romanproduktion · KDP")
-        Spacer(Modifier.height(18.dp))
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val wide = maxWidth >= WIDE_DP.dp
+        val maxW = if (wide) 860.dp else maxWidth
+        Column(
+            Modifier
+                .align(Alignment.TopCenter)
+                .widthIn(max = maxW)
+                .fillMaxSize()
+                .padding(horizontal = if (wide) 24.dp else 16.dp, vertical = 16.dp)
+        ) {
+            BrandHeader("NovelForge", "KI-Romanproduktion · KDP")
+            Spacer(Modifier.height(18.dp))
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatTile(projects.size.toString(), "Projekte", MaterialTheme.colorScheme.primary, Modifier.weight(1f))
-            StatTile(projects.count { it.status == ProjectStatus.COMPLETED }.toString(), "Fertig",
-                MaterialTheme.colorScheme.tertiary, Modifier.weight(1f))
-            StatTile(words(projects.sumOf { it.wordCount }), "Wörter",
-                MaterialTheme.colorScheme.onSurface, Modifier.weight(1f))
-        }
-        Spacer(Modifier.height(16.dp))
-
-        Card(Modifier.fillMaxWidth()) {
-            Row(
-                Modifier.fillMaxWidth().padding(14.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text("Auto-Modus", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        if (auto) "Läuft im Hintergrund · $completed fertig"
-                        else "Erzeugt automatisch Buch um Buch – läuft weiter, während du dein Handy nutzt.",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Spacer(Modifier.width(10.dp))
-                if (auto) {
-                    Button(
-                        onClick = { vm.stopGeneration() },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                    ) { Text("Stop") }
-                } else {
-                    Button(onClick = { vm.startAuto() }, enabled = !apiMissing) { Text("Start") }
-                }
-            }
-        }
-        Spacer(Modifier.height(16.dp))
-
-        val active = projects.firstOrNull { it.id == generatingId }
-        progress?.let { p ->
-            Card(
-                Modifier.fillMaxWidth(),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
-            ) {
-                Column(Modifier.padding(14.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        SectionLabel("In Produktion")
-                        Text("${(p.fraction * 100).toInt()}%", fontFamily = FontFamily.Monospace,
-                            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    if (active != null) {
-                        Spacer(Modifier.height(4.dp))
-                        Text(active.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                    }
-                    Spacer(Modifier.height(3.dp))
-                    Text(p.phase, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(9.dp))
-                    LinearProgressIndicator(progress = { p.fraction }, modifier = Modifier.fillMaxWidth())
-                    if (!auto) {
-                        Spacer(Modifier.height(10.dp))
-                        OutlinedButton(onClick = { vm.stopGeneration() }, modifier = Modifier.fillMaxWidth()) {
-                            Text("Generierung stoppen")
-                        }
-                    }
-                }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StatTile(projects.size.toString(), "Projekte", MaterialTheme.colorScheme.primary, Modifier.weight(1f))
+                StatTile(projects.count { it.status == ProjectStatus.COMPLETED }.toString(), "Fertig",
+                    MaterialTheme.colorScheme.tertiary, Modifier.weight(1f))
+                StatTile(words(projects.sumOf { it.wordCount }), "Wörter",
+                    MaterialTheme.colorScheme.onSurface, Modifier.weight(1f))
             }
             Spacer(Modifier.height(16.dp))
-        }
 
-        SectionLabel("Deine Bücher")
-        Spacer(Modifier.height(8.dp))
-
-        if (projects.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Filled.MenuBook, contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(40.dp))
-                    Spacer(Modifier.height(10.dp))
-                    Text("Noch keine Bücher", style = MaterialTheme.typography.titleSmall)
-                    Text("Tippe unten auf Neues Buch, um zu starten.", style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val active = projects.firstOrNull { it.id == generatingId }
+            // Auto-Karte und Produktions-Karte: auf breiten Schirmen nebeneinander.
+            val autoCard: @Composable () -> Unit = {
+                AutoModeCard(auto, completed, apiMissing, onStart = { vm.startAuto() }, onStop = { vm.stopGeneration() })
+            }
+            val prodCard: (@Composable () -> Unit)? = progress?.let { p ->
+                {
+                    ProductionCard(p.phase, p.fraction, active?.title, showStop = !auto) { vm.stopGeneration() }
                 }
             }
-        } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                items(projects) { project ->
-                    ProjectRow(project) { onOpen(project.id) }
+            if (wide && prodCard != null) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Box(Modifier.weight(1f)) { autoCard() }
+                    Box(Modifier.weight(1f)) { prodCard() }
+                }
+                Spacer(Modifier.height(16.dp))
+            } else {
+                autoCard()
+                Spacer(Modifier.height(16.dp))
+                if (prodCard != null) {
+                    prodCard()
+                    Spacer(Modifier.height(16.dp))
+                }
+            }
+
+            SectionLabel("Deine Bücher")
+            Spacer(Modifier.height(8.dp))
+
+            if (projects.isEmpty()) {
+                Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Filled.MenuBook, contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(40.dp))
+                        Spacer(Modifier.height(10.dp))
+                        Text("Noch keine Bücher", style = MaterialTheme.typography.titleSmall)
+                        Text("Tippe unten auf Neues Buch, um zu starten.", style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(9.dp)
+                ) {
+                    items(projects) { project ->
+                        ProjectRow(project) { onOpen(project.id) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AutoModeCard(
+    auto: Boolean, completed: Int, apiMissing: Boolean,
+    onStart: () -> Unit, onStop: () -> Unit,
+) {
+    Card(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth().padding(14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Auto-Modus", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text(
+                    if (auto) "Läuft im Hintergrund · $completed fertig"
+                    else "Erzeugt automatisch Buch um Buch – läuft weiter, während du dein Handy nutzt.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            if (auto) {
+                Button(onClick = onStop,
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text("Stop") }
+            } else {
+                Button(onClick = onStart, enabled = !apiMissing) { Text("Start") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProductionCard(phase: String, fraction: Float, title: String?, showStop: Boolean, onStop: () -> Unit) {
+    Card(
+        Modifier.fillMaxWidth(),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                SectionLabel("In Produktion")
+                Text("${(fraction * 100).toInt()}%", fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (title != null) {
+                Spacer(Modifier.height(4.dp))
+                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            }
+            Spacer(Modifier.height(3.dp))
+            Text(phase, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(9.dp))
+            LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
+            if (showStop) {
+                Spacer(Modifier.height(10.dp))
+                OutlinedButton(onClick = onStop, modifier = Modifier.fillMaxWidth()) {
+                    Text("Generierung stoppen")
                 }
             }
         }
@@ -255,8 +351,7 @@ private fun ProjectRow(project: Project, onClick: () -> Unit) {
         Row(Modifier.height(IntrinsicSize.Min)) {
             Box(Modifier.width(4.dp).fillMaxHeight().background(accentFor(project.id)))
             Column(Modifier.padding(14.dp)) {
-                Text(project.title, style = MaterialTheme.typography.titleMedium,
-                    fontFamily = FontFamily.Serif, fontWeight = FontWeight.Medium)
+                Text(project.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
                 Text("${project.authorName} · ${project.genre}", style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(8.dp))
@@ -300,7 +395,7 @@ private fun SegmentedSpice(selected: Int, onSelect: (Int) -> Unit) {
         Row(
             Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(10.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(10.dp))
                 .padding(4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
@@ -335,29 +430,29 @@ private fun SegmentedSpice(selected: Int, onSelect: (Int) -> Unit) {
 fun NewBookScreen(vm: AppViewModel, onCreated: (String) -> Unit) {
     val config by vm.config.collectAsState()
 
-    var title by remember { mutableStateOf("") }
-    var author by remember { mutableStateOf("") }
-    var genre by remember { mutableStateOf("Liebesroman") }
-    var style by remember { mutableStateOf("atmosphärisch") }
-    var tropes by remember { mutableStateOf("") }
-    var series by remember { mutableStateOf("") }
-    var spice by remember { mutableIntStateOf(0) }
-    var pages by remember { mutableIntStateOf(300) }
-    var chapters by remember { mutableIntStateOf(24) }
+    // rememberSaveable: Eingaben überleben Drehung/Rotation sauber.
+    var title by rememberSaveable { mutableStateOf("") }
+    var author by rememberSaveable { mutableStateOf("") }
+    var genre by rememberSaveable { mutableStateOf("Liebesroman") }
+    var style by rememberSaveable { mutableStateOf("atmosphärisch") }
+    var tropes by rememberSaveable { mutableStateOf("") }
+    var series by rememberSaveable { mutableStateOf("") }
+    var spice by rememberSaveable { mutableIntStateOf(0) }
+    var pages by rememberSaveable { mutableIntStateOf(300) }
+    var chapters by rememberSaveable { mutableIntStateOf(24) }
 
     val canCreate = title.isNotBlank() && author.isNotBlank() && config.apiKey.isNotBlank()
 
-    Column(
-        Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
+    ScrollScreen { wide ->
         Column {
-            Text("Neues Buch", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text("Neues Buch", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Medium)
             SectionLabel("In Minuten zum fertigen KDP-Roman")
         }
 
-        OutlinedTextField(title, { title = it }, label = { Text("Titel") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(author, { author = it }, label = { Text("Autor / Pseudonym") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        FieldPair(wide,
+            { OutlinedTextField(title, { title = it }, label = { Text("Titel") }, singleLine = true, modifier = Modifier.fillMaxWidth()) },
+            { OutlinedTextField(author, { author = it }, label = { Text("Autor / Pseudonym") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+        )
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(Modifier.weight(1f)) { LabeledDropdown("Genre", Genres.all, genre) { genre = it } }
@@ -366,8 +461,10 @@ fun NewBookScreen(vm: AppViewModel, onCreated: (String) -> Unit) {
 
         SegmentedSpice(spice) { spice = it }
 
-        OutlinedTextField(tropes, { tropes = it }, label = { Text("Tropes (kommagetrennt)") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(series, { series = it }, label = { Text("Serie / Reihe (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        FieldPair(wide,
+            { OutlinedTextField(tropes, { tropes = it }, label = { Text("Tropes (kommagetrennt)") }, modifier = Modifier.fillMaxWidth()) },
+            { OutlinedTextField(series, { series = it }, label = { Text("Serie / Reihe (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+        )
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(pages.toString(), { pages = it.toIntOrNull() ?: pages },
@@ -397,7 +494,7 @@ fun NewBookScreen(vm: AppViewModel, onCreated: (String) -> Unit) {
                 onCreated(vm.createAndGenerate(project))
             },
             enabled = canCreate,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().height(52.dp)
         ) {
             Icon(Icons.Filled.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
@@ -411,15 +508,12 @@ fun NewBookScreen(vm: AppViewModel, onCreated: (String) -> Unit) {
 @Composable
 fun SettingsScreen(vm: AppViewModel) {
     val config by vm.config.collectAsState()
-    var baseUrl by remember(config.baseUrl) { mutableStateOf(config.baseUrl) }
-    var apiKey by remember(config.apiKey) { mutableStateOf(config.apiKey) }
-    var model by remember(config.model) { mutableStateOf(config.model) }
+    var baseUrl by rememberSaveable(config.baseUrl) { mutableStateOf(config.baseUrl) }
+    var apiKey by rememberSaveable(config.apiKey) { mutableStateOf(config.apiKey) }
+    var model by rememberSaveable(config.model) { mutableStateOf(config.model) }
 
-    Column(
-        Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Text("Einstellungen", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+    ScrollScreen {
+        Text("Einstellungen", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Medium)
         SectionLabel("KI-Anbieter")
         Text("Ollama Cloud oder ein OpenAI-kompatibler Endpunkt. Der API-Key wird nur lokal gespeichert.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -431,7 +525,7 @@ fun SettingsScreen(vm: AppViewModel) {
 
         Button(
             onClick = { vm.saveSettings(AiConfig(baseUrl.trim(), apiKey.trim(), model.trim())) },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().height(50.dp)
         ) { Text("Speichern") }
 
         StatusBadge(if (config.apiKey.isBlank()) ProjectStatus.FAILED else ProjectStatus.COMPLETED)
@@ -472,12 +566,8 @@ fun ProjectScreen(vm: AppViewModel, projectId: String) {
         ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.wordprocessingml.document")
     ) { uri -> uri?.let { context.contentResolver.openOutputStream(it)?.use { os -> os.write(ExportBuilder.docxBytes(project)) } } }
 
-    Column(
-        Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Text(project.title, style = MaterialTheme.typography.headlineSmall,
-            fontFamily = FontFamily.Serif, fontWeight = FontWeight.Medium)
+    ScrollScreen {
+        Text(project.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Medium)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             StatusBadge(project.status)
             Text("${words(project.wordCount)} Wörter · ${project.chapters.size} Kapitel",
@@ -489,7 +579,7 @@ fun ProjectScreen(vm: AppViewModel, projectId: String) {
             progress?.let { p ->
                 Card(
                     Modifier.fillMaxWidth(),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
                 ) {
                     Column(Modifier.padding(14.dp)) {
                         Text(p.phase, style = MaterialTheme.typography.bodyMedium)
@@ -585,17 +675,6 @@ fun ProjectScreen(vm: AppViewModel, projectId: String) {
                     Text(ch.text.ifBlank { ch.goal }.take(2000), style = MaterialTheme.typography.bodySmall)
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun SectionCard(title: String, content: @Composable () -> Unit) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(14.dp)) {
-            SectionLabel(title)
-            Spacer(Modifier.height(6.dp))
-            content()
         }
     }
 }
