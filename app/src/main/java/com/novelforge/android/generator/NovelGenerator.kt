@@ -21,6 +21,10 @@ data class GenProgress(val phase: String, val fraction: Float)
 class NovelGenerator(config: AiConfig) {
 
     private val ai = AiClient(config)
+    // Zweistufig: optional ein stärkeres Modell nur fürs Schreiben der Kapitel/Eröffnung.
+    private val writer = AiClient(
+        if (config.writingModel.isBlank()) config else config.copy(model = config.writingModel)
+    )
 
     private fun wordCount(s: String) = s.split(Regex("\\s+")).count { it.isNotBlank() }
 
@@ -37,13 +41,30 @@ class NovelGenerator(config: AiConfig) {
             project.profile.narrativePerspective, project.profile.tense
         )
 
+        // 0) Fortsetzung: für den nächsten Band einen frischen, passenden Titel finden.
+        if (project.sequelContext.isNotBlank()) {
+            onProgress(GenProgress("Bandtitel finden …", 0.03f))
+            val ideaText = try {
+                ai.chat(
+                    "Du bist Verlagslektor für Bestseller-Reihen.",
+                    PromptFactory.sequelIdea(
+                        project.seriesName.ifBlank { project.title }, project.genre, project.sequelContext
+                    ),
+                    temperature = 0.9, maxTokens = 400
+                )
+            } catch (e: Exception) { "" }
+            val newTitle = field(ideaText, "TITEL")
+            if (newTitle.isNotBlank()) project.title = newTitle
+        }
+
         // 1) Konzept
         onProgress(GenProgress("Konzept entwickeln …", 0.05f))
         val conceptText = ai.chat(
             system = "Du bist ein erfahrener Verlagslektor und entwickelst originelle Buchkonzepte. Antworte direkt, niemals mit Rückfragen.",
             prompt = PromptFactory.concept(
                 project.title, project.genre, project.language, project.styleProfile,
-                project.targetPageCount, project.tropes, project.styleSignature
+                project.targetPageCount, project.tropes, project.styleSignature,
+                sequelContext = project.sequelContext
             ),
             temperature = 0.85, maxTokens = 1400
         )
@@ -56,7 +77,8 @@ class NovelGenerator(config: AiConfig) {
             prompt = PromptFactory.plot(
                 project.title, project.genre, project.styleProfile,
                 project.profile.synopsis.ifBlank { project.profile.premise },
-                project.targetPageCount, project.chapterTarget, project.styleSignature
+                project.targetPageCount, project.chapterTarget, project.styleSignature,
+                sequelContext = project.sequelContext
             ),
             temperature = 0.8, maxTokens = 2200
         )
@@ -79,17 +101,20 @@ class NovelGenerator(config: AiConfig) {
             throw IllegalStateException("Kein Kapitelplan erhalten.")
         }
 
-        // 3b) Figurenensemble (Story-Bible) für konsistente, benannte Figuren.
-        onProgress(GenProgress("Figuren entwickeln …", 0.28f))
-        val charText = try {
-            ai.chat(
-                "Du bist ein Charakterentwickler für Romane.",
-                PromptFactory.characters(project.title, project.genre, plot),
-                temperature = 0.7, maxTokens = 1500
-            )
-        } catch (e: Exception) { "" }
-        project.characters.clear()
-        project.characters.addAll(parseCharacters(charText))
+        // 3b) Figurenensemble (Story-Bible). Bei Fortsetzungen werden die etablierten
+        //     Figuren des Vorbands übernommen (Kontinuität), sonst neu entwickelt.
+        if (project.sequelContext.isBlank() || project.characters.isEmpty()) {
+            onProgress(GenProgress("Figuren entwickeln …", 0.28f))
+            val charText = try {
+                ai.chat(
+                    "Du bist ein Charakterentwickler für Romane.",
+                    PromptFactory.characters(project.title, project.genre, plot),
+                    temperature = 0.7, maxTokens = 1500
+                )
+            } catch (e: Exception) { "" }
+            project.characters.clear()
+            project.characters.addAll(parseCharacters(charText))
+        }
         val charactersSummary = project.characters.joinToString("\n") { c ->
             buildString {
                 append(c.name)
@@ -120,7 +145,7 @@ class NovelGenerator(config: AiConfig) {
                 val hint = if (attempt == 1) "" else
                     "\n\nDer vorige Versuch war zu kurz, generisch oder klang nach KI. Schreibe jetzt das vollständige Kapitel als reinen Fließtext, mindestens $minWords Wörter, ohne Meta-Kommentare. Betont menschlich: harte Satzlängen-Varianz, keine KI-Floskeln, kein deutender Schlusssatz."
                 val candidate = try {
-                    ai.chat(
+                    writer.chat(
                         system = "Du bist ein Bestseller-Autor. Gib ausschließlich den Prosatext zurück.",
                         prompt = draftPrompt + hint,
                         temperature = 0.85, maxTokens = (wordsPerChapter * 3).coerceIn(2000, 8000)
@@ -148,6 +173,31 @@ class NovelGenerator(config: AiConfig) {
             storySoFar = (storySoFar + "\n\n" + ch.text).takeLast(6000)
         }
 
+        // 4b) „Blick ins Buch": Eröffnung des ersten Kapitels auf Sog optimieren.
+        val opener = project.chapters.firstOrNull()
+        if (opener != null && opener.text.length > 200 && !opener.text.startsWith("[Kapitel")) {
+            onProgress(GenProgress("Eröffnung optimieren …", 0.90f))
+            val improved = try {
+                writer.chat(
+                    system = "Du bist ein Bestseller-Autor und Spezialist für packende Romananfänge. Gib ausschließlich Prosatext zurück.",
+                    prompt = PromptFactory.optimizeOpening(
+                        project.title, project.genre,
+                        project.profile.narrativePerspective, project.profile.tense,
+                        opener.text, wordsPerChapter
+                    ),
+                    temperature = 0.85, maxTokens = (wordsPerChapter * 3).coerceIn(2000, 8000)
+                ).trim()
+            } catch (e: Exception) { "" }
+            val cleaned = ContentQuality.humanizeProse(
+                ContentQuality.strippingInlineFormatting(
+                    ContentQuality.strippingPromptArtifacts(improved)))
+            // Nur übernehmen, wenn brauchbar UND vom Schutzfilter freigegeben.
+            if (cleaned.length > 200 && !ContentQuality.containsMetaRequest(cleaned) && ContentSafetyFilter.isSafe(cleaned)) {
+                opener.text = cleaned
+                opener.wordCount = wordCount(cleaned)
+            }
+        }
+
         // 5) KDP-Metadaten
         onProgress(GenProgress("KDP-Verkaufstexte erstellen …", 0.92f))
         val kdpText = ai.chat(
@@ -160,6 +210,20 @@ class NovelGenerator(config: AiConfig) {
             temperature = 0.8, maxTokens = 1200
         )
         parseKdp(kdpText, project)
+
+        // 6) Cover-Bildprompt für das KDP-Coverdesign.
+        onProgress(GenProgress("Cover-Prompt erstellen …", 0.97f))
+        project.profile.coverPrompt = try {
+            ai.chat(
+                system = "Du bist Art-Director für Buchcover.",
+                prompt = PromptFactory.coverPrompt(
+                    project.title, project.genre,
+                    project.profile.synopsis.ifBlank { project.profile.premise },
+                    project.styleProfile
+                ),
+                temperature = 0.7, maxTokens = 600
+            ).trim()
+        } catch (e: Exception) { project.profile.coverPrompt }
 
         project.status = ProjectStatus.COMPLETED
         onProgress(GenProgress("Fertig", 1.0f))

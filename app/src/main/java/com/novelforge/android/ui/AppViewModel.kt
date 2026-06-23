@@ -7,6 +7,7 @@ import com.novelforge.android.ai.AiConfig
 import com.novelforge.android.data.ProjectRepository
 import com.novelforge.android.data.SettingsStore
 import com.novelforge.android.domain.Project
+import com.novelforge.android.domain.SeriesContext
 import com.novelforge.android.generator.GenProgress
 import com.novelforge.android.generator.GenerationController
 import com.novelforge.android.service.GenerationService
@@ -42,6 +43,36 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         ProjectRepository.upsert(project)
         GenerationService.generate(getApplication<Application>(), project.id)
         return project.id
+    }
+
+    /**
+     * Erzeugt den nächsten Band einer Reihe aus einem abgeschlossenen Buch und startet die
+     * Generierung. Trägt Figuren, Welt und Schlusszustand des Vorbands weiter (Kontinuität).
+     */
+    fun createSequel(fromId: String): String? {
+        val prev = projects.value.firstOrNull { it.id == fromId } ?: return null
+        val reihe = prev.seriesName.ifBlank { prev.title }
+        val nextNumber = (if (prev.seriesNumber > 0) prev.seriesNumber else 1) + 1
+        val sequel = Project(
+            title = "$reihe – Band $nextNumber",
+            authorName = prev.authorName,
+            language = prev.language,
+            genre = prev.genre,
+            subgenre = prev.subgenre,
+            styleProfile = prev.styleProfile,
+            tropes = prev.tropes,
+            spiceLevel = prev.spiceLevel,
+            seriesName = reihe,
+            seriesNumber = nextNumber,
+            sequelContext = SeriesContext.build(prev, nextNumber),
+            targetPageCount = prev.targetPageCount,
+            chapterTarget = prev.chapterTarget,
+            createdAt = System.currentTimeMillis(),
+        )
+        sequel.characters.addAll(prev.characters.map { it.copy() })
+        ProjectRepository.upsert(sequel)
+        GenerationService.generate(getApplication<Application>(), sequel.id)
+        return sequel.id
     }
 
     /** Startet die Dauerproduktion (Auto-Modus) im Hintergrund. */

@@ -16,6 +16,9 @@ data class AiConfig(
     val baseUrl: String = "https://ollama.com",
     val apiKey: String = "",
     val model: String = "kimi-k2.6",
+    // Optionales, stärkeres Modell nur fürs Schreiben der Kapitel (zweistufig).
+    // Leer = es wird durchgehend `model` verwendet.
+    val writingModel: String = "",
 )
 
 class AiException(message: String) : Exception(message)

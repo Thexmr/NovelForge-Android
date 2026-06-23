@@ -106,7 +106,11 @@ private fun AppNavHost(nav: NavHostController, vm: AppViewModel) {
             "project/{id}",
             arguments = listOf(navArgument("id") { type = NavType.StringType })
         ) { entry ->
-            ProjectScreen(vm, projectId = entry.arguments?.getString("id").orEmpty())
+            ProjectScreen(
+                vm,
+                projectId = entry.arguments?.getString("id").orEmpty(),
+                onOpenProject = { id -> nav.navigate("project/$id") }
+            )
         }
     }
 }

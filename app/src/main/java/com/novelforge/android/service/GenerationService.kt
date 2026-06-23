@@ -12,6 +12,7 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.novelforge.android.ai.AiClient
+import com.novelforge.android.ai.AiConfig
 import com.novelforge.android.ai.PromptFactory
 import com.novelforge.android.data.ProjectRepository
 import com.novelforge.android.data.SettingsStore
@@ -26,119 +27,135 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
- * Foreground-Service: führt die Buchproduktion (Einzelbuch oder Auto-Modus) im
- * Hintergrund aus, mit dauerhafter Benachrichtigung – das Handy bleibt nutzbar,
- * und Android beendet den Prozess nicht.
+ * Foreground-Service: führt die Buchproduktion im Hintergrund aus (das Handy bleibt nutzbar).
+ * EIN serieller Worker arbeitet eine Warteschlange ab: angeforderte Einzel-/Fortsetzungs-Bücher
+ * zuerst, danach – solange Auto-Modus aktiv ist – fortlaufend neue Bücher. Dadurch geht keine
+ * Anforderung verloren, auch nicht während eine andere Generierung schon läuft.
  */
 class GenerationService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var job: Job? = null
 
+    private val lock = Any()
+    private val queue = ArrayDeque<String>()       // wartende Einzel-/Fortsetzungs-Bücher
+    private var workerRunning = false
+    private var autoRound = 0
+    private val recentIdeas = ArrayDeque<String>() // Story-Memory: zuletzt erzeugte Titel (Auto-Modus)
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Erfüllt den startForegroundService→startForeground-Vertrag bei JEDEM Kommando.
+        ensureForeground("Buchproduktion läuft …")
         when (intent?.action) {
-            ACTION_GENERATE -> intent.getStringExtra(EXTRA_ID)?.let { startGenerate(it) }
-            ACTION_AUTO -> startAuto()
+            ACTION_GENERATE -> intent.getStringExtra(EXTRA_ID)?.let { enqueue(it) }
+            ACTION_AUTO -> { GenerationController.setAuto(true); ensureWorker() }
             ACTION_STOP -> stopAll()
         }
         return START_NOT_STICKY
     }
 
-    private fun startGenerate(projectId: String) {
-        if (job?.isActive == true) return
-        ensureForeground("Buch wird erstellt …")
-        job = scope.launch {
-            try {
-                val cfg = SettingsStore(applicationContext).configFlow.first()
-                val project = ProjectRepository.get(projectId) ?: return@launch
-                GenerationController.setActive(project.id)
-                GenerationController.setError(null)
-                NovelGenerator(cfg).generate(project) { p ->
-                    GenerationController.setProgress(p)
-                    ProjectRepository.touch()
-                    updateNotification("${project.title}: ${p.phase}")
+    private fun enqueue(projectId: String) {
+        synchronized(lock) { queue.addLast(projectId) }
+        ensureWorker()
+    }
+
+    /** Startet genau EINEN seriellen Worker, falls keiner läuft. */
+    private fun ensureWorker() {
+        synchronized(lock) {
+            if (workerRunning) return
+            workerRunning = true
+        }
+        job = scope.launch { worker() }
+    }
+
+    private suspend fun worker() {
+        try {
+            val cfg = SettingsStore(applicationContext).configFlow.first()
+            while (true) {
+                val pid = synchronized(lock) { if (queue.isNotEmpty()) queue.removeFirst() else null }
+                if (pid != null) { generateOne(cfg, pid); continue }
+                if (GenerationController.auto.value) { generateAuto(cfg); continue }
+                // Nichts mehr zu tun – atomar abmelden (schließt die Producer/Consumer-Lücke).
+                synchronized(lock) {
+                    if (queue.isEmpty() && !GenerationController.auto.value) {
+                        workerRunning = false
+                        return@worker
+                    }
                 }
-                GenerationController.incCompleted()
-            } catch (e: Exception) {
-                ProjectRepository.get(projectId)?.status = ProjectStatus.FAILED
-                GenerationController.setError(e.message ?: "Unbekannter Fehler")
-            } finally {
-                GenerationController.setActive(null)
-                GenerationController.setProgress(null)
-                ProjectRepository.touch()
-                stopSelfSafely()
             }
+        } finally {
+            synchronized(lock) { workerRunning = false }
+            GenerationController.setActive(null)
+            GenerationController.setProgress(null)
+            ProjectRepository.touch()
+            stopSelfSafely()
         }
     }
 
-    private fun startAuto() {
-        if (job?.isActive == true) return
-        ensureForeground("Auto-Modus: Bücher werden produziert …")
-        GenerationController.setAuto(true)
-        job = scope.launch {
-            try {
-                val cfg = SettingsStore(applicationContext).configFlow.first()
-                val ai = AiClient(cfg)
-                val gen = NovelGenerator(cfg)
-                var round = 0
-                while (isActive && GenerationController.auto.value) {
-                    round++
-                    val genre = Genres.all[(round - 1) % Genres.all.size]
-                    val ideaText = try {
-                        ai.chat(
-                            "Du bist ein Bestseller-Lektor und Titel-Experte.",
-                            PromptFactory.bookIdea(genre, "Deutsch"),
-                            temperature = 0.95, maxTokens = 500
-                        )
-                    } catch (e: Exception) { "" }
-                    val title = parseField(ideaText, "TITEL").ifBlank { "$genre-Roman $round" }
-                    val premise = parseField(ideaText, "PRÄMISSE")
-
-                    val project = Project(
-                        title = title,
-                        authorName = "NovelForge",
-                        genre = genre,
-                        targetPageCount = 200,
-                        chapterTarget = 16,
-                        createdAt = System.currentTimeMillis(),
-                    )
-                    project.profile.premise = premise
-                    ProjectRepository.upsert(project)
-                    GenerationController.setActive(project.id)
-                    GenerationController.setError(null)
-                    try {
-                        gen.generate(project) { p ->
-                            GenerationController.setProgress(p)
-                            ProjectRepository.touch()
-                            updateNotification("Auto · ${project.title}: ${p.phase}")
-                        }
-                        GenerationController.incCompleted()
-                    } catch (e: Exception) {
-                        // Ein gescheitertes Buch stoppt die Dauerproduktion nicht.
-                        project.status = ProjectStatus.FAILED
-                        GenerationController.setError(e.message ?: "Fehler")
-                    }
-                    ProjectRepository.touch()
-                }
-            } finally {
-                GenerationController.setAuto(false)
-                GenerationController.setActive(null)
-                GenerationController.setProgress(null)
-                stopSelfSafely()
+    private suspend fun generateOne(cfg: AiConfig, projectId: String) {
+        val project = ProjectRepository.get(projectId) ?: return
+        GenerationController.setActive(project.id)
+        GenerationController.setError(null)
+        updateNotification(project.title)
+        try {
+            NovelGenerator(cfg).generate(project) { p ->
+                GenerationController.setProgress(p)
+                ProjectRepository.touch()
+                updateNotification("${project.title}: ${p.phase}")
             }
+            GenerationController.incCompleted()
+        } catch (e: Exception) {
+            project.status = ProjectStatus.FAILED
+            GenerationController.setError(e.message ?: "Unbekannter Fehler")
+        } finally {
+            GenerationController.setProgress(null)
+            ProjectRepository.touch()
         }
+    }
+
+    private suspend fun generateAuto(cfg: AiConfig) {
+        val ai = AiClient(cfg)
+        val genre = Genres.all[autoRound % Genres.all.size]
+        autoRound++
+        val avoid = synchronized(lock) { recentIdeas.toList() }
+        val ideaText = try {
+            ai.chat(
+                "Du bist ein Bestseller-Lektor und Titel-Experte.",
+                PromptFactory.bookIdea(genre, "Deutsch", avoid),
+                temperature = 0.95, maxTokens = 500
+            )
+        } catch (e: Exception) { "" }
+        val title = parseField(ideaText, "TITEL").ifBlank { "$genre-Roman $autoRound" }
+        val premise = parseField(ideaText, "PRÄMISSE")
+        synchronized(lock) {
+            recentIdeas.addLast(title)
+            while (recentIdeas.size > 12) recentIdeas.removeFirst()
+        }
+        val project = Project(
+            title = title,
+            authorName = "NovelForge",
+            genre = genre,
+            targetPageCount = 200,
+            chapterTarget = 16,
+            createdAt = System.currentTimeMillis(),
+        )
+        project.profile.premise = premise
+        ProjectRepository.upsert(project)
+        generateOne(cfg, project.id)
     }
 
     private fun stopAll() {
         GenerationController.setAuto(false)
+        synchronized(lock) { queue.clear(); workerRunning = false }
         job?.cancel()
         job = null
+        GenerationController.setActive(null)
+        GenerationController.setProgress(null)
         stopSelfSafely()
     }
 

@@ -12,19 +12,80 @@ object PromptFactory {
 
     private fun block(s: String) = if (s.isBlank()) "" else "\n$s\n"
 
-    fun bookIdea(genre: String, language: String): String = """
+    fun bookIdea(genre: String, language: String, avoid: List<String> = emptyList()): String {
+        val avoidBlock = if (avoid.isEmpty()) "" else
+            "\nVERMEIDE Wiederholungen – diese Titel/Ideen gab es in dieser Produktion schon, liefere etwas DEUTLICH anderes (Setting, Hook, Figuren): ${avoid.joinToString(" | ")}\n"
+        return """
         Erfinde EINE starke, vermarktbare Buchidee (Genre: $genre, Sprache: $language) mit einem
         viralen, aber sofort verständlichen Titel (kein kryptisches Wortspiel, keine paradoxen
         Wort-Collagen, kein Berufs-Ort-Klischee). Der Titel klingt wie ein echter Verlags-Bestseller.
-
+        $avoidBlock
         Antworte exakt in diesem Format:
         TITEL: [2-6 Wörter, klickstark UND klar]
         PRÄMISSE: [2 Sätze – Satz 1 ist der High-Concept-Hook, Satz 2 nennt Konflikt und Einsatz]
+        """.trimIndent()
+    }
+
+    fun coverPrompt(title: String, genre: String, synopsis: String, mood: String): String = """
+        Erstelle einen professionellen Cover-Bildprompt für das Buch "$title" (Genre: $genre, Stimmung: $mood).
+        Der Prompt ist für einen KI-Bildgenerator (Midjourney/DALL·E) gedacht und beschreibt ein
+        verkaufsstarkes, genre-typisches Buchcover (Motiv, Bildausschnitt, Farbwelt, Licht, Komposition,
+        Platz für Titel oben/unten). KEINE Buchstaben/keinen Text im Bild beschreiben (Titel wird separat gesetzt).
+
+        Inhalt (als Inspiration):
+        ${synopsis.take(1200)}
+
+        Antworte exakt in diesem Format:
+        BILDPROMPT: [ein einziger, dichter englischer Prompt in EINER Zeile, bildgenerator-tauglich]
+        STIL: [3-6 Stichworte zu Farbwelt & Stimmung, deutsch]
+    """.trimIndent()
+
+    fun optimizeOpening(
+        title: String, genre: String, perspective: String, tense: String,
+        currentText: String, targetWords: Int,
+    ): String = """
+        Überarbeite das ERSTE Kapitel des Romans "$title" (Genre: $genre) so, dass die ersten Sätze
+        die Amazon-Leseprobe ("Blick ins Buch") sofort fesseln und zum Kauf führen.
+        Erzählperspektive: $perspective. Zeitform: $tense.
+
+        REGELN: Starte mitten in einer konkreten Szene/Handlung (kein Wetter-/Rückblick-Vorlauf), erzeuge
+        sofort eine Frage oder Spannung im Kopf der Lesenden, zeige statt zu erklären, variiere Satzlängen stark.
+        Inhalt, Figuren und Handlung des Kapitels bleiben erhalten – nur Sog und Anfang werden stärker.
+        Umfang etwa $targetWords Wörter. Reiner deutscher Fließtext, KEINE Markdown-Symbole, keine Meta-Kommentare.
+
+        AKTUELLES KAPITEL:
+        ${currentText.take(6000)}
+
+        Gib ausschließlich den überarbeiteten Kapiteltext zurück.
+    """.trimIndent()
+
+    /** Verbindlicher Fortsetzungs-Block für Serien/Reihen (leer, wenn kein Kontext). */
+    private fun sequelBlock(sequelContext: String): String = if (sequelContext.isBlank()) "" else """
+
+        FORTSETZUNG (VERBINDLICH): Dies ist ein weiterer Band einer Reihe. Führe dieselben Hauptfiguren und dieselbe Welt konsistent fort und ehre die bisherigen Ereignisse – ABER liefere einen eigenständigen, vollständigen Spannungsbogen mit neuer zentraler Frage und klarer Eskalation gegenüber dem Vorband. Wiederhole NICHT die Handlung des Vorbands. Neuleser müssen folgen können (knappe, organische Einordnung statt Zusammenfassung).
+        KONTEXT DES VORBANDS:
+        ${sequelContext.take(2500)}
+        """
+
+    fun sequelIdea(seriesName: String, genre: String, sequelContext: String): String = """
+        Entwickle den nächsten Band der Reihe "$seriesName" (Genre: $genre).
+        KONTEXT DES VORBANDS:
+        ${sequelContext.take(2500)}
+
+        Der neue Band setzt die Geschichte mit denselben Hauptfiguren fort, hat aber einen
+        EIGENEN vollständigen Handlungsbogen und einen frischen, klaren Titel (KEIN "Band 2"
+        im Titel, kein kryptisches Wortspiel). Der Titel passt zur Reihe und klingt wie ein
+        echter Verlags-Bestseller.
+
+        Antworte exakt in diesem Format:
+        TITEL: [2-6 Wörter, klar und stark]
+        PRÄMISSE: [2 Sätze – neuer Hook, der auf dem Vorband aufbaut]
     """.trimIndent()
 
     fun concept(
         title: String, genre: String, language: String, style: String,
         pageCount: Int, tropes: String = "", bookSignature: String = "",
+        sequelContext: String = "",
     ): String {
         val tropeBlock = if (tropes.isBlank()) "" else
             "\nTROPE-VERTRAG (VERBINDLICH – die Zielgruppe kauft genau diese Tropes; liefere sie deutlich über den ganzen Bogen): $tropes\n"
@@ -35,7 +96,7 @@ object PromptFactory {
         Sprache: $language
         Stilprofil: $style
         Zielumfang: ca. $pageCount Seiten
-        $tropeBlock${block(bookSignature)}
+        $tropeBlock${block(bookSignature)}${sequelBlock(sequelContext)}
         VERBINDLICH: Entwickle das Konzept so, dass es exakt zum Titel "$title" und zum Genre "$genre" passt und den Titel erzählerisch einlöst. Diese Bindung gilt fürs GANZE Buch: jede Hauptfigur, der Hauptkonflikt und jede Szene erfüllen das Genre "$genre" und lösen das Titel-Versprechen ein – der fertige Roman liefert genau das, was Titel und Genre versprechen.
         BESTSELLER-KERN: zugespitzte High-Concept-Prämisse (in EINEM Satz fassbar, kein generisches "Frau kehrt heim und findet Geheimnisse"); eine AKTIVE Hauptfigur, die die Handlung durch eigene Entscheidungen treibt; ein scharfer, präsenter Gegenpart mit echter Chemie/Reibung; das Genre wird in Szenen wirklich GELIEFERT (bei (Dark) Romance/Slow Burn: spürbar eskalierende Anziehung mit Auszahlung, kein "No Burn").
 
@@ -52,13 +113,14 @@ object PromptFactory {
     fun plot(
         title: String, genre: String, style: String, concept: String,
         pageCount: Int, chapterCount: Int, bookSignature: String = "",
+        sequelContext: String = "",
     ): String = """
         Erstelle den vollständigen Plot für den Roman "$title".
         Genre: $genre | Stil: $style | Umfang: ca. $pageCount Seiten in $chapterCount Kapiteln.
 
         Konzept:
         $concept
-        ${block(bookSignature)}
+        ${block(bookSignature)}${sequelBlock(sequelContext)}
         Baue den Plot nach bewährter Bestseller-Dramaturgie in drei Akten (Eröffnungsbild & Alltag mit Riss, auslösendes Ereignis, erster Wendepunkt, steigende Komplikationen, Mittelpunkt-Umkehr, Tiefpunkt, finale Konfrontation, Höhepunkt & Auflösung). Falls die Stil-DNA eine andere Struktur vorgibt, ordne die Beats dieser Struktur unter.
         Formuliere die zentrale dramatische Frage, webe eine verstärkende Nebenhandlung ein und plane Kapitelenden mit offenen Haken. Schreibe als zusammenhängenden, klar gegliederten Text.
     """.trimIndent()

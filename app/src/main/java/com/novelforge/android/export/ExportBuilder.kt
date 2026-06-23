@@ -30,6 +30,7 @@ object ExportBuilder {
         if (p.kdpDescription.isNotBlank()) sb.append("VERKAUFSTEXT:\n").append(p.kdpDescription).append("\n\n")
         if (p.kdpKeywords.isNotBlank()) sb.append("KEYWORDS:\n").append(p.kdpKeywords).append("\n\n")
         if (p.kdpCategories.isNotBlank()) sb.append("KATEGORIEN:\n").append(p.kdpCategories).append("\n\n")
+        if (p.coverPrompt.isNotBlank()) sb.append("COVER-PROMPT:\n").append(p.coverPrompt).append("\n\n")
         return sb.toString().trim()
     }
 

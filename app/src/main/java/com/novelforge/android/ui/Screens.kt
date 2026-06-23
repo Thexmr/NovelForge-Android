@@ -1,6 +1,7 @@
 package com.novelforge.android.ui
 
 import android.content.Intent
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -511,6 +512,7 @@ fun SettingsScreen(vm: AppViewModel) {
     var baseUrl by rememberSaveable(config.baseUrl) { mutableStateOf(config.baseUrl) }
     var apiKey by rememberSaveable(config.apiKey) { mutableStateOf(config.apiKey) }
     var model by rememberSaveable(config.model) { mutableStateOf(config.model) }
+    var writingModel by rememberSaveable(config.writingModel) { mutableStateOf(config.writingModel) }
 
     ScrollScreen {
         Text("Einstellungen", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Medium)
@@ -522,9 +524,13 @@ fun SettingsScreen(vm: AppViewModel) {
         OutlinedTextField(model, { model = it }, label = { Text("Modell") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(apiKey, { apiKey = it }, label = { Text("API-Key") },
             visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(writingModel, { writingModel = it }, label = { Text("Schreibmodell (optional)") },
+            singleLine = true, modifier = Modifier.fillMaxWidth())
+        Text("Leer = überall dasselbe Modell. Sonst wird dieses (stärkere) Modell nur fürs Schreiben der Kapitel genutzt.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
         Button(
-            onClick = { vm.saveSettings(AiConfig(baseUrl.trim(), apiKey.trim(), model.trim())) },
+            onClick = { vm.saveSettings(AiConfig(baseUrl.trim(), apiKey.trim(), model.trim(), writingModel.trim())) },
             modifier = Modifier.fillMaxWidth().height(50.dp)
         ) { Text("Speichern") }
 
@@ -538,7 +544,7 @@ fun SettingsScreen(vm: AppViewModel) {
 // ---- Projekt-Detail --------------------------------------------------------------
 
 @Composable
-fun ProjectScreen(vm: AppViewModel, projectId: String) {
+fun ProjectScreen(vm: AppViewModel, projectId: String, onOpenProject: (String) -> Unit = {}) {
     val projects by vm.projects.collectAsState()
     val progress by vm.progress.collectAsState()
     val error by vm.error.collectAsState()
@@ -570,9 +576,35 @@ fun ProjectScreen(vm: AppViewModel, projectId: String) {
         Text(project.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Medium)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             StatusBadge(project.status)
-            Text("${words(project.wordCount)} Wörter · ${project.chapters.size} Kapitel",
+            Text(
+                "${words(project.wordCount)} Wörter · ${project.chapters.size} Kapitel" +
+                    if (project.seriesNumber > 0) " · Band ${project.seriesNumber}" else "",
                 fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        // Reihe fortsetzen: aus einem fertigen Band den nächsten erzeugen (Figuren/Welt wandern mit).
+        if (project.status == ProjectStatus.COMPLETED) {
+            Button(
+                onClick = {
+                    val id = vm.createSequel(project.id)
+                    if (id != null) {
+                        Toast.makeText(context, "Nächster Band wird erstellt …", Toast.LENGTH_SHORT).show()
+                        onOpenProject(id)
+                    } else {
+                        Toast.makeText(context, "Fortsetzung konnte nicht erstellt werden.", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().height(50.dp)
+            ) {
+                Icon(Icons.Filled.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    if (project.seriesNumber > 0) "Band ${project.seriesNumber + 1} dieser Reihe erzeugen"
+                    else "Fortsetzung (Band 2) erzeugen"
+                )
+            }
         }
 
         if (isGenerating) {
@@ -649,6 +681,17 @@ fun ProjectScreen(vm: AppViewModel, projectId: String) {
             SectionCard("Keywords") {
                 Text(project.profile.kdpKeywords, style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+
+        if (project.profile.coverPrompt.isNotBlank()) {
+            SectionCard("Cover-Prompt") {
+                Text(project.profile.coverPrompt, style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { clipboard.setText(AnnotatedString(project.profile.coverPrompt)) },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Cover-Prompt kopieren") }
             }
         }
 

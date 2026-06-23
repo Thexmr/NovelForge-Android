@@ -38,6 +38,7 @@ data class BookProfile(
     var kdpDescription: String = "",
     var kdpKeywords: String = "",
     var kdpCategories: String = "",
+    var coverPrompt: String = "",
 )
 
 data class Project(
@@ -52,6 +53,7 @@ data class Project(
     var spiceLevel: Int = 0,
     var seriesName: String = "",
     var seriesNumber: Int = 0,
+    var sequelContext: String = "",
     var styleSignature: String = "",
     var targetPageCount: Int = 300,
     var chapterTarget: Int = 24,
@@ -74,4 +76,25 @@ object Genres {
     )
     val languages = listOf("Deutsch", "Englisch")
     val styles = listOf("atmosphärisch", "temporeich", "emotional", "düster", "humorvoll", "poetisch")
+}
+
+/**
+ * Baut einen kompakten Fortsetzungs-Kontext aus dem vorherigen Band (für Serien/Reihen).
+ * Trägt Welt, etablierte Figuren und den Schlusszustand weiter, damit der nächste Band
+ * konsistent anschließt – wie eine echte Buchreihe.
+ */
+object SeriesContext {
+    fun build(prev: Project, bandNumber: Int): String = buildString {
+        val reihe = prev.seriesName.ifBlank { prev.title }
+        appendLine("Dies ist Band $bandNumber der Reihe \"$reihe\".")
+        appendLine("Vorheriger Band: \"${prev.title}\" (${prev.genre}).")
+        val recap = prev.profile.synopsis.ifBlank { prev.profile.premise }
+        if (recap.isNotBlank()) appendLine("Was bisher geschah: $recap")
+        val chars = prev.characters.joinToString("; ") { c ->
+            c.name + if (c.role.isNotBlank()) " (${c.role})" else ""
+        }
+        if (chars.isNotBlank()) appendLine("Etablierte Hauptfiguren (fortführen): $chars")
+        val lastText = prev.chapters.lastOrNull { it.text.isNotBlank() }?.text
+        if (!lastText.isNullOrBlank()) appendLine("So endete der letzte Band: …${lastText.takeLast(600)}")
+    }.trim()
 }
