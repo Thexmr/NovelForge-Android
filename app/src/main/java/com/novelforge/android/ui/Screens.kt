@@ -427,6 +427,12 @@ fun ProjectScreen(vm: AppViewModel, projectId: String) {
     val txtLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/plain")
     ) { uri -> uri?.let { context.contentResolver.openOutputStream(it)?.use { os -> os.write(ExportBuilder.manuscriptText(project).toByteArray()) } } }
+    val pdfLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/pdf")
+    ) { uri -> uri?.let { context.contentResolver.openOutputStream(it)?.use { os -> os.write(ExportBuilder.pdfBytes(project)) } } }
+    val docxLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    ) { uri -> uri?.let { context.contentResolver.openOutputStream(it)?.use { os -> os.write(ExportBuilder.docxBytes(project)) } } }
 
     Column(
         Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),
@@ -473,6 +479,11 @@ fun ProjectScreen(vm: AppViewModel, projectId: String) {
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { epubLauncher.launch("${project.title}.epub") }, modifier = Modifier.weight(1f)) { Text("EPUB") }
+                    OutlinedButton(onClick = { pdfLauncher.launch("${project.title}.pdf") }, modifier = Modifier.weight(1f)) { Text("PDF") }
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { docxLauncher.launch("${project.title}.docx") }, modifier = Modifier.weight(1f)) { Text("Google Docs") }
                     OutlinedButton(onClick = { txtLauncher.launch("${project.title}.txt") }, modifier = Modifier.weight(1f)) { Text(".txt") }
                 }
                 Spacer(Modifier.height(8.dp))

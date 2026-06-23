@@ -70,6 +70,85 @@ object ExportBuilder {
         return bos.toByteArray()
     }
 
+    /** PDF über das Android-Framework (PdfDocument + StaticLayout, mehrseitig, A4). */
+    fun pdfBytes(project: Project): ByteArray {
+        val text = manuscriptText(project)
+        val pageW = 595; val pageH = 842; val margin = 54
+        val contentW = pageW - 2 * margin
+        val contentH = pageH - 2 * margin
+        val paint = android.text.TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.BLACK
+            textSize = 11.5f
+        }
+        val layout = android.text.StaticLayout.Builder
+            .obtain(text, 0, text.length, paint, contentW)
+            .setLineSpacing(3f, 1f)
+            .build()
+        val pdf = android.graphics.pdf.PdfDocument()
+        var y = 0
+        var pageNum = 1
+        val total = layout.height.coerceAtLeast(1)
+        while (y < total) {
+            val info = android.graphics.pdf.PdfDocument.PageInfo.Builder(pageW, pageH, pageNum).create()
+            val page = pdf.startPage(info)
+            val canvas = page.canvas
+            canvas.save()
+            canvas.clipRect(margin.toFloat(), margin.toFloat(), (margin + contentW).toFloat(), (margin + contentH).toFloat())
+            canvas.translate(margin.toFloat(), (margin - y).toFloat())
+            layout.draw(canvas)
+            canvas.restore()
+            pdf.finishPage(page)
+            y += contentH
+            pageNum++
+        }
+        val bos = ByteArrayOutputStream()
+        pdf.writeTo(bos)
+        pdf.close()
+        return bos.toByteArray()
+    }
+
+    /** DOCX (Office Open XML) – wird von Google Docs, Word und Pages importiert. */
+    fun docxBytes(project: Project): ByteArray {
+        val body = StringBuilder()
+        fun para(t: String, bold: Boolean = false) {
+            val rpr = if (bold) "<w:rPr><w:b/></w:rPr>" else ""
+            body.append("<w:p><w:r>$rpr<w:t xml:space=\"preserve\">${escapeXml(t)}</w:t></w:r></w:p>")
+        }
+        para(project.title, bold = true)
+        para("von ${project.authorName}")
+        project.chapters.sortedBy { it.number }.forEach { ch ->
+            para("Kapitel ${ch.number}: ${ch.title}", bold = true)
+            ch.text.ifBlank { ch.goal }.split("\n").map { it.trim() }.filter { it.isNotEmpty() }.forEach { para(it) }
+        }
+        val document = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>$body<w:sectPr/></w:body></w:document>"""
+
+        val bos = ByteArrayOutputStream()
+        ZipOutputStream(bos).use { zos ->
+            fun add(path: String, content: String) {
+                zos.putNextEntry(ZipEntry(path))
+                zos.write(content.toByteArray(Charsets.UTF_8))
+                zos.closeEntry()
+            }
+            add("[Content_Types].xml", CONTENT_TYPES)
+            add("_rels/.rels", DOCX_RELS)
+            add("word/document.xml", document)
+        }
+        return bos.toByteArray()
+    }
+
+    private const val CONTENT_TYPES = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>"""
+
+    private const val DOCX_RELS = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>"""
+
     private const val CONTAINER = """<?xml version="1.0" encoding="UTF-8"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
   <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
