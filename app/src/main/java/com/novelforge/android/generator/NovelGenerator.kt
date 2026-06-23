@@ -4,6 +4,7 @@ import com.novelforge.android.ai.AiClient
 import com.novelforge.android.ai.AiConfig
 import com.novelforge.android.ai.PromptFactory
 import com.novelforge.android.domain.Chapter
+import com.novelforge.android.domain.ContentQuality
 import com.novelforge.android.domain.ContentSafetyFilter
 import com.novelforge.android.domain.NarrativeSignature
 import com.novelforge.android.domain.Project
@@ -82,25 +83,45 @@ class NovelGenerator(config: AiConfig) {
         var storySoFar = ""
         project.chapters.forEachIndexed { index, ch ->
             onProgress(GenProgress("Kapitel ${ch.number} schreiben …", 0.30f + 0.6f * index / project.chapters.size))
-            val raw = try {
-                ai.chat(
-                    system = "Du bist ein Bestseller-Autor. Gib ausschließlich den Prosatext zurück.",
-                    prompt = PromptFactory.draftChapter(
-                        project.language, project.styleProfile, project.genre, project.title,
-                        ch.number, ch.title, ch.goal, ch.conflict,
-                        project.profile.narrativePerspective, project.profile.tense,
-                        storySoFar, wordsPerChapter,
-                        isFirst = index == 0, isLast = index == project.chapters.size - 1,
-                        project.styleSignature, project.spiceLevel
-                    ),
-                    temperature = 0.8, maxTokens = (wordsPerChapter * 3).coerceIn(2000, 8000)
-                ).trim()
-            } catch (e: Exception) {
-                // Ein einzelnes fehlgeschlagenes Kapitel beendet NICHT das ganze Buch.
-                "[Kapitel ${ch.number} konnte nicht erzeugt werden (${e.message}). Bitte einzeln neu erzeugen.]"
+            val draftPrompt = PromptFactory.draftChapter(
+                project.language, project.styleProfile, project.genre, project.title,
+                ch.number, ch.title, ch.goal, ch.conflict,
+                project.profile.narrativePerspective, project.profile.tense,
+                storySoFar, wordsPerChapter,
+                isFirst = index == 0, isLast = index == project.chapters.size - 1,
+                project.styleSignature, project.spiceLevel
+            )
+            val minWords = maxOf(120, (wordsPerChapter * 0.6).toInt())
+            var best = ""
+            var lastErr: String? = null
+            // Bis zu 2 Versuche: schwache, meta-haltige oder KI-klingende Fassungen werden neu geschrieben.
+            for (attempt in 1..2) {
+                val hint = if (attempt == 1) "" else
+                    "\n\nDer vorige Versuch war zu kurz, generisch oder klang nach KI. Schreibe jetzt das vollständige Kapitel als reinen Fließtext, mindestens $minWords Wörter, ohne Meta-Kommentare. Betont menschlich: harte Satzlängen-Varianz, keine KI-Floskeln, kein deutender Schlusssatz."
+                val candidate = try {
+                    ai.chat(
+                        system = "Du bist ein Bestseller-Autor. Gib ausschließlich den Prosatext zurück.",
+                        prompt = draftPrompt + hint,
+                        temperature = 0.85, maxTokens = (wordsPerChapter * 3).coerceIn(2000, 8000)
+                    ).trim()
+                } catch (e: Exception) { lastErr = e.message; continue }
+                val candGood = candidate.isNotBlank() && !ContentQuality.containsPromptArtifacts(candidate) &&
+                    !ContentQuality.soundsLikeAI(candidate) && !ContentQuality.containsMetaRequest(candidate)
+                val bestGood = best.isNotBlank() && !ContentQuality.containsPromptArtifacts(best) &&
+                    !ContentQuality.soundsLikeAI(best) && !ContentQuality.containsMetaRequest(best)
+                if (best.isBlank() || (candGood && !bestGood) ||
+                    (candGood == bestGood && wordCount(candidate) > wordCount(best))) best = candidate
+                if (ContentQuality.acceptsChapter(best, wordsPerChapter) && candGood) break
+            }
+            // Prompt-Artefakte/Markdown raus + „menschlicher" machen, bevor gespeichert wird.
+            var text = ContentQuality.humanizeProse(
+                ContentQuality.strippingInlineFormatting(
+                    ContentQuality.strippingPromptArtifacts(best)))
+            if (text.isBlank() || ContentQuality.containsMetaRequest(text)) {
+                text = "[Kapitel ${ch.number} konnte nicht erzeugt werden${lastErr?.let { " ($it)" } ?: ""}. Bitte einzeln neu erzeugen.]"
             }
             // HARTE SICHERHEITSSPERRE: sexuelle Inhalte mit Kindern/Minderjährigen werden NIE gespeichert.
-            ch.text = if (ContentSafetyFilter.isSafe(raw)) raw
+            ch.text = if (ContentSafetyFilter.isSafe(text)) text
                 else "[Kapitel ${ch.number} vom Schutzfilter blockiert – an intimen Szenen dürfen ausschließlich erwachsene (18+) Figuren beteiligt sein. Bitte neu erzeugen.]"
             ch.wordCount = wordCount(ch.text)
             storySoFar = (storySoFar + "\n\n" + ch.text).takeLast(6000)
