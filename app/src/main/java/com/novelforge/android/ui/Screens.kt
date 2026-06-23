@@ -1,24 +1,35 @@
 package com.novelforge.android.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -33,37 +44,68 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.novelforge.android.ai.AiConfig
 import com.novelforge.android.domain.Genres
 import com.novelforge.android.domain.Project
 import com.novelforge.android.domain.ProjectStatus
 import com.novelforge.android.domain.SpiceLevel
+import java.text.NumberFormat
+import java.util.Locale
 
 // ---- gemeinsame Bausteine --------------------------------------------------------
 
+private fun words(n: Int): String = NumberFormat.getInstance(Locale.GERMANY).format(n)
+
+private val accents = listOf(Color(0xFF6B73FF), Color(0xFF8F80EB), Color(0xFF5DCAA5), Color(0xFFE3B24A))
+private fun accentFor(seed: String): Color = accents[(seed.hashCode() and 0x7FFFFFFF) % accents.size]
+
 @Composable
-private fun LabeledDropdown(
-    label: String,
-    options: List<String>,
-    selected: String,
-    onSelect: (String) -> Unit,
-) {
-    var open by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxWidth()) {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Box {
-            OutlinedButton(onClick = { open = true }, modifier = Modifier.fillMaxWidth()) {
-                Text(selected.ifBlank { "Bitte wählen" }, modifier = Modifier.fillMaxWidth())
-            }
-            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-                options.forEach { opt ->
-                    DropdownMenuItem(text = { Text(opt) }, onClick = { onSelect(opt); open = false })
-                }
-            }
+private fun Monogram(size: Int = 38) {
+    Box(
+        Modifier
+            .size(size.dp)
+            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape((size / 3.4f).dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        Text("N", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = (size * 0.5f).sp)
+    }
+}
+
+@Composable
+private fun BrandHeader(title: String, subtitle: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Monogram()
+        Column {
+            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text(subtitle.uppercase(), style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, letterSpacing = 1.sp)
+        }
+    }
+}
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(text.uppercase(), style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant, letterSpacing = 1.sp,
+        fontWeight = FontWeight.Medium)
+}
+
+@Composable
+private fun StatTile(value: String, label: String, color: Color, modifier: Modifier = Modifier) {
+    Card(modifier, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 11.dp)) {
+            Text(value, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold,
+                fontSize = 20.sp, color = color)
+            Spacer(Modifier.height(2.dp))
+            SectionLabel(label)
         }
     }
 }
@@ -76,7 +118,13 @@ private fun StatusBadge(status: ProjectStatus) {
         ProjectStatus.FAILED -> "Fehlgeschlagen" to MaterialTheme.colorScheme.error
         ProjectStatus.CREATED -> "Entwurf" to MaterialTheme.colorScheme.onSurfaceVariant
     }
-    Text(text, style = MaterialTheme.typography.labelSmall, color = color, fontWeight = FontWeight.SemiBold)
+    Box(
+        Modifier
+            .background(color.copy(alpha = 0.16f), RoundedCornerShape(999.dp))
+            .padding(horizontal = 9.dp, vertical = 3.dp)
+    ) {
+        Text(text, style = MaterialTheme.typography.labelSmall, color = color, fontWeight = FontWeight.Medium)
+    }
 }
 
 // ---- Dashboard -------------------------------------------------------------------
@@ -85,53 +133,64 @@ private fun StatusBadge(status: ProjectStatus) {
 fun DashboardScreen(vm: AppViewModel, onOpen: (String) -> Unit) {
     val projects by vm.projects.collectAsState()
     val progress by vm.progress.collectAsState()
+    val generatingId by vm.generatingId.collectAsState()
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Text("NovelForge", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Text("KI-Romanproduktion für Amazon KDP", style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(16.dp))
+        BrandHeader("NovelForge", "KI-Romanproduktion · KDP")
+        Spacer(Modifier.height(18.dp))
 
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            StatCard("Projekte", projects.size.toString(), Modifier.weight(1f))
-            StatCard("Fertig", projects.count { it.status == ProjectStatus.COMPLETED }.toString(), Modifier.weight(1f))
-            StatCard("Wörter", projects.sumOf { it.wordCount }.toString(), Modifier.weight(1f))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            StatTile(projects.size.toString(), "Projekte", MaterialTheme.colorScheme.primary, Modifier.weight(1f))
+            StatTile(projects.count { it.status == ProjectStatus.COMPLETED }.toString(), "Fertig",
+                MaterialTheme.colorScheme.tertiary, Modifier.weight(1f))
+            StatTile(words(projects.sumOf { it.wordCount }), "Wörter",
+                MaterialTheme.colorScheme.onSurface, Modifier.weight(1f))
         }
         Spacer(Modifier.height(16.dp))
 
+        val active = projects.firstOrNull { it.id == generatingId }
         progress?.let { p ->
-            Card(Modifier.fillMaxWidth()) {
+            Card(
+                Modifier.fillMaxWidth(),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
+            ) {
                 Column(Modifier.padding(14.dp)) {
-                    Text(p.phase, style = MaterialTheme.typography.bodyMedium)
-                    Spacer(Modifier.height(8.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        SectionLabel("In Produktion")
+                        Text("${(p.fraction * 100).toInt()}%", fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (active != null) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(active.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    }
+                    Spacer(Modifier.height(3.dp))
+                    Text(p.phase, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(9.dp))
                     LinearProgressIndicator(progress = { p.fraction }, modifier = Modifier.fillMaxWidth())
                 }
             }
             Spacer(Modifier.height(16.dp))
         }
 
+        SectionLabel("Deine Bücher")
+        Spacer(Modifier.height(8.dp))
+
         if (projects.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Noch keine Bücher. Tippe unten auf Neues Buch.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Filled.MenuBook, contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(40.dp))
+                    Spacer(Modifier.height(10.dp))
+                    Text("Noch keine Bücher", style = MaterialTheme.typography.titleSmall)
+                    Text("Tippe unten auf Neues Buch, um zu starten.", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 items(projects) { project ->
-                    Card(Modifier.fillMaxWidth().clickable { onOpen(project.id) }) {
-                        Column(Modifier.padding(14.dp)) {
-                            Text(project.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text("${project.authorName} · ${project.genre}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Spacer(Modifier.height(6.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                StatusBadge(project.status)
-                                Text("${project.wordCount} Wörter", style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    }
+                    ProjectRow(project) { onOpen(project.id) }
                 }
             }
         }
@@ -139,12 +198,80 @@ fun DashboardScreen(vm: AppViewModel, onOpen: (String) -> Unit) {
 }
 
 @Composable
-private fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
-    Card(modifier) {
-        Column(Modifier.padding(14.dp)) {
-            Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary)
-            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun ProjectRow(project: Project, onClick: () -> Unit) {
+    Card(Modifier.fillMaxWidth().clickable { onClick() }) {
+        Row(Modifier.height(IntrinsicSize.Min)) {
+            Box(Modifier.width(4.dp).fillMaxHeight().background(accentFor(project.id)))
+            Column(Modifier.padding(14.dp)) {
+                Text(project.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("${project.authorName} · ${project.genre}", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    StatusBadge(project.status)
+                    Text("${words(project.wordCount)} Wörter", fontFamily = FontFamily.Monospace,
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+}
+
+// ---- gemeinsame Eingabe-Bausteine ------------------------------------------------
+
+@Composable
+private fun LabeledDropdown(label: String, options: List<String>, selected: String, onSelect: (String) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth()) {
+        SectionLabel(label)
+        Spacer(Modifier.height(4.dp))
+        Box {
+            OutlinedButton(onClick = { open = true }, modifier = Modifier.fillMaxWidth()) {
+                Text(selected.ifBlank { "Bitte wählen" }, modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium)
+            }
+            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                options.forEach { opt ->
+                    DropdownMenuItem(text = { Text(opt) }, onClick = { onSelect(opt); open = false })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SegmentedSpice(selected: Int, onSelect: (Int) -> Unit) {
+    Column(Modifier.fillMaxWidth()) {
+        SectionLabel("Sinnlichkeitsgrad")
+        Spacer(Modifier.height(5.dp))
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(10.dp))
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            for (level in 0..5) {
+                val on = selected == level
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .clickable { onSelect(level) }
+                        .background(
+                            if (on) MaterialTheme.colorScheme.primary else Color.Transparent,
+                            RoundedCornerShape(8.dp)
+                        )
+                        .padding(vertical = 7.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        if (level == 0) "—" else level.toString(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (on) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal
+                    )
+                }
+            }
         }
     }
 }
@@ -165,43 +292,41 @@ fun NewBookScreen(vm: AppViewModel, onCreated: (String) -> Unit) {
     var pages by remember { mutableIntStateOf(300) }
     var chapters by remember { mutableIntStateOf(24) }
 
-    val spiceOptions = listOf("Nicht angegeben") + SpiceLevel.range.map { SpiceLevel.pickerLabel(it) }
     val canCreate = title.isNotBlank() && author.isNotBlank() && config.apiKey.isNotBlank()
 
     Column(
         Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("Neues Buch", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-
-        OutlinedTextField(title, { title = it }, label = { Text("Titel") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(author, { author = it }, label = { Text("Autor / Pseudonym") }, modifier = Modifier.fillMaxWidth())
-        LabeledDropdown("Genre", Genres.all, genre) { genre = it }
-        LabeledDropdown("Stil", Genres.styles, style) { style = it }
-        OutlinedTextField(tropes, { tropes = it },
-            label = { Text("Tropes (kommagetrennt)") }, modifier = Modifier.fillMaxWidth())
-
-        LabeledDropdown("Sinnlichkeitsgrad", spiceOptions,
-            if (spice == 0) "Nicht angegeben" else SpiceLevel.pickerLabel(spice)) { sel ->
-            spice = SpiceLevel.range.firstOrNull { SpiceLevel.pickerLabel(it) == sel } ?: 0
+        Column {
+            Text("Neues Buch", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            SectionLabel("In Minuten zum fertigen KDP-Roman")
         }
-        Text("Branchenübliche Einstufung der erotischen Intensität (1–5). Steuert Szenen-Ausführlichkeit und KDP-Einordnung.",
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
-        OutlinedTextField(series, { series = it },
-            label = { Text("Serie / Reihe (optional – für Read-Through)") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(title, { title = it }, label = { Text("Titel") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(author, { author = it }, label = { Text("Autor / Pseudonym") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box(Modifier.weight(1f)) { LabeledDropdown("Genre", Genres.all, genre) { genre = it } }
+            Box(Modifier.weight(1f)) { LabeledDropdown("Stil", Genres.styles, style) { style = it } }
+        }
+
+        SegmentedSpice(spice) { spice = it }
+
+        OutlinedTextField(tropes, { tropes = it }, label = { Text("Tropes (kommagetrennt)") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(series, { series = it }, label = { Text("Serie / Reihe (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(pages.toString(), { pages = it.toIntOrNull() ?: pages },
-                label = { Text("Seiten") }, modifier = Modifier.weight(1f),
+                label = { Text("Seiten") }, singleLine = true, modifier = Modifier.weight(1f),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
             OutlinedTextField(chapters.toString(), { chapters = it.toIntOrNull() ?: chapters },
-                label = { Text("Kapitel") }, modifier = Modifier.weight(1f),
+                label = { Text("Kapitel") }, singleLine = true, modifier = Modifier.weight(1f),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
         }
 
         if (config.apiKey.isBlank()) {
-            Text("Hinweis: Erst in den Einstellungen einen API-Key hinterlegen.",
+            Text("Erst in den Einstellungen einen API-Key hinterlegen.",
                 color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
 
@@ -220,7 +345,11 @@ fun NewBookScreen(vm: AppViewModel, onCreated: (String) -> Unit) {
             },
             enabled = canCreate,
             modifier = Modifier.fillMaxWidth()
-        ) { Text("Buch erstellen & generieren") }
+        ) {
+            Icon(Icons.Filled.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Buch erstellen & generieren")
+        }
     }
 }
 
@@ -237,21 +366,23 @@ fun SettingsScreen(vm: AppViewModel) {
         Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("KI-Anbieter", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text("OpenAI-kompatibler Endpunkt (z.B. Ollama Cloud). Der Key wird nur lokal gespeichert.",
+        Text("Einstellungen", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        SectionLabel("KI-Anbieter")
+        Text("Ollama Cloud oder ein OpenAI-kompatibler Endpunkt. Der API-Key wird nur lokal gespeichert.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
-        OutlinedTextField(baseUrl, { baseUrl = it }, label = { Text("Basis-URL") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(model, { model = it }, label = { Text("Modell") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(baseUrl, { baseUrl = it }, label = { Text("Basis-URL") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(model, { model = it }, label = { Text("Modell") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(apiKey, { apiKey = it }, label = { Text("API-Key") },
-            visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+            visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth())
 
         Button(
             onClick = { vm.saveSettings(AiConfig(baseUrl.trim(), apiKey.trim(), model.trim())) },
             modifier = Modifier.fillMaxWidth()
         ) { Text("Speichern") }
 
-        Text(if (config.apiKey.isBlank()) "Kein API-Key hinterlegt" else "API-Key ist hinterlegt ✓",
+        StatusBadge(if (config.apiKey.isBlank()) ProjectStatus.FAILED else ProjectStatus.COMPLETED)
+        Text(if (config.apiKey.isBlank()) "Kein API-Key hinterlegt" else "API-Key ist hinterlegt",
             style = MaterialTheme.typography.bodySmall,
             color = if (config.apiKey.isBlank()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary)
     }
@@ -272,44 +403,70 @@ fun ProjectScreen(vm: AppViewModel, projectId: String) {
         return
     }
 
+    val isGenerating = generatingId == project.id
+
     Column(
         Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(project.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             StatusBadge(project.status)
-            Text("${project.wordCount} Wörter · ${project.chapters.size} Kapitel",
-                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("${words(project.wordCount)} Wörter · ${project.chapters.size} Kapitel",
+                fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
-        progress?.takeIf { generatingId == project.id }?.let { p ->
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(14.dp)) {
-                    Text(p.phase, style = MaterialTheme.typography.bodyMedium)
-                    Spacer(Modifier.height(8.dp))
-                    LinearProgressIndicator(progress = { p.fraction }, modifier = Modifier.fillMaxWidth())
+        if (isGenerating) {
+            progress?.let { p ->
+                Card(
+                    Modifier.fillMaxWidth(),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
+                ) {
+                    Column(Modifier.padding(14.dp)) {
+                        Text(p.phase, style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.height(8.dp))
+                        LinearProgressIndicator(progress = { p.fraction }, modifier = Modifier.fillMaxWidth())
+                    }
                 }
             }
         }
 
         error?.let {
-            Card(Modifier.fillMaxWidth()) {
-                Text("Fehler: $it", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(14.dp))
+            Card(
+                Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.12f))
+            ) {
+                Text("Fehler: $it", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(14.dp),
+                    style = MaterialTheme.typography.bodySmall)
             }
         }
 
+        if (project.profile.kdpTitle.isNotBlank()) {
+            SectionCard("KDP-Verkaufstitel") {
+                Text(project.profile.kdpTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                if (project.profile.kdpSubtitle.isNotBlank()) {
+                    Text(project.profile.kdpSubtitle, style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
         if (project.profile.kdpDescription.isNotBlank()) {
-            SectionCard("KDP-Verkaufstext") { Text(project.profile.kdpDescription) }
+            SectionCard("KDP-Verkaufstext") { Text(project.profile.kdpDescription, style = MaterialTheme.typography.bodySmall) }
         }
         if (project.profile.kdpKeywords.isNotBlank()) {
-            SectionCard("Keywords") { Text(project.profile.kdpKeywords) }
+            SectionCard("Keywords") {
+                Text(project.profile.kdpKeywords, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
 
-        project.chapters.forEach { ch ->
-            SectionCard("Kapitel ${ch.number}: ${ch.title}") {
-                Text(ch.text.ifBlank { ch.goal }.take(2000),
-                    style = MaterialTheme.typography.bodySmall)
+        if (project.chapters.isNotEmpty()) {
+            SectionLabel("Manuskript")
+            project.chapters.forEach { ch ->
+                SectionCard("Kapitel ${ch.number}: ${ch.title}") {
+                    Text(ch.text.ifBlank { ch.goal }.take(2000), style = MaterialTheme.typography.bodySmall)
+                }
             }
         }
     }
@@ -319,7 +476,7 @@ fun ProjectScreen(vm: AppViewModel, projectId: String) {
 private fun SectionCard(title: String, content: @Composable () -> Unit) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp)) {
-            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            SectionLabel(title)
             Spacer(Modifier.height(6.dp))
             content()
         }
