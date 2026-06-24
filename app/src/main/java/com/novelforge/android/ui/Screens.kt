@@ -1,6 +1,7 @@
 package com.novelforge.android.ui
 
 import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -48,11 +49,13 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -79,6 +82,9 @@ import com.novelforge.android.ui.theme.NoirGold
 import com.novelforge.android.ui.theme.Violet
 import java.text.NumberFormat
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 // ---- Responsivität ---------------------------------------------------------------
 // Eine einzige Schwelle entscheidet, ob breit (Querformat/Tablet) layoutet wird.
@@ -442,8 +448,8 @@ fun NewBookScreen(vm: AppViewModel, onCreated: (String) -> Unit) {
     var tropes by rememberSaveable { mutableStateOf("") }
     var series by rememberSaveable { mutableStateOf("") }
     var spice by rememberSaveable { mutableIntStateOf(0) }
-    var pages by rememberSaveable { mutableIntStateOf(300) }
-    var chapters by rememberSaveable { mutableIntStateOf(24) }
+    var pages by rememberSaveable { mutableStateOf("300") }
+    var chapters by rememberSaveable { mutableStateOf("24") }
 
     val canCreate = title.isNotBlank() && author.isNotBlank() && config.apiKey.isNotBlank()
 
@@ -471,10 +477,10 @@ fun NewBookScreen(vm: AppViewModel, onCreated: (String) -> Unit) {
         )
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedTextField(pages.toString(), { pages = it.toIntOrNull() ?: pages },
+            OutlinedTextField(pages, { v -> pages = v.filter { it.isDigit() }.take(4) },
                 label = { Text("Seiten") }, singleLine = true, modifier = Modifier.weight(1f),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-            OutlinedTextField(chapters.toString(), { chapters = it.toIntOrNull() ?: chapters },
+            OutlinedTextField(chapters, { v -> chapters = v.filter { it.isDigit() }.take(3) },
                 label = { Text("Kapitel") }, singleLine = true, modifier = Modifier.weight(1f),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
         }
@@ -491,8 +497,8 @@ fun NewBookScreen(vm: AppViewModel, onCreated: (String) -> Unit) {
                     genre = genre, styleProfile = style, tropes = tropes.trim(),
                     spiceLevel = spice, seriesName = series.trim(),
                     seriesNumber = if (series.isBlank()) 0 else 1,
-                    targetPageCount = pages.coerceIn(40, 1000),
-                    chapterTarget = chapters.coerceIn(3, 120),
+                    targetPageCount = (pages.toIntOrNull() ?: 300).coerceIn(40, 1000),
+                    chapterTarget = (chapters.toIntOrNull() ?: 24).coerceIn(3, 120),
                     createdAt = System.currentTimeMillis(),
                 )
                 onCreated(vm.createAndGenerate(project))
@@ -512,10 +518,19 @@ fun NewBookScreen(vm: AppViewModel, onCreated: (String) -> Unit) {
 @Composable
 fun SettingsScreen(vm: AppViewModel) {
     val config by vm.config.collectAsState()
-    var baseUrl by rememberSaveable(config.baseUrl) { mutableStateOf(config.baseUrl) }
-    var apiKey by rememberSaveable(config.apiKey) { mutableStateOf(config.apiKey) }
-    var model by rememberSaveable(config.model) { mutableStateOf(config.model) }
-    var writingModel by rememberSaveable(config.writingModel) { mutableStateOf(config.writingModel) }
+    var baseUrl by rememberSaveable { mutableStateOf(AiConfig().baseUrl) }
+    var apiKey by rememberSaveable { mutableStateOf("") }
+    var model by rememberSaveable { mutableStateOf(AiConfig().model) }
+    var writingModel by rememberSaveable { mutableStateOf("") }
+    var seeded by rememberSaveable { mutableStateOf(false) }
+    // Gespeicherte Werte EINMAL übernehmen, sobald sie aus DataStore eintreffen – laufende Eingaben bleiben erhalten.
+    LaunchedEffect(config) {
+        if (!seeded && config.apiKey.isNotBlank()) {
+            baseUrl = config.baseUrl; model = config.model
+            apiKey = config.apiKey; writingModel = config.writingModel
+            seeded = true
+        }
+    }
 
     ScrollScreen {
         Text("Einstellungen", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Medium)
@@ -566,18 +581,31 @@ fun ProjectScreen(
     var confirmDelete by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
+    val scope = rememberCoroutineScope()
+    // Export-Bytes (ganzes Buch) im Hintergrund schreiben → kein ANR; Rückmeldung per Toast.
+    fun export(uri: Uri?, label: String, bytes: () -> ByteArray) {
+        if (uri == null) return
+        scope.launch(Dispatchers.IO) {
+            val ok = runCatching {
+                context.contentResolver.openOutputStream(uri)?.use { it.write(bytes()) } ?: error("kein Stream")
+            }.isSuccess
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, if (ok) "$label gespeichert" else "$label fehlgeschlagen", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
     val epubLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/epub+zip")
-    ) { uri -> uri?.let { context.contentResolver.openOutputStream(it)?.use { os -> os.write(ExportBuilder.epubBytes(project)) } } }
+    ) { uri -> export(uri, "EPUB") { ExportBuilder.epubBytes(project) } }
     val txtLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/plain")
-    ) { uri -> uri?.let { context.contentResolver.openOutputStream(it)?.use { os -> os.write(ExportBuilder.manuscriptText(project).toByteArray()) } } }
+    ) { uri -> export(uri, "Manuskript") { ExportBuilder.manuscriptText(project).toByteArray() } }
     val pdfLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/pdf")
-    ) { uri -> uri?.let { context.contentResolver.openOutputStream(it)?.use { os -> os.write(ExportBuilder.pdfBytes(project)) } } }
+    ) { uri -> export(uri, "PDF") { ExportBuilder.pdfBytes(project) } }
     val docxLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-    ) { uri -> uri?.let { context.contentResolver.openOutputStream(it)?.use { os -> os.write(ExportBuilder.docxBytes(project)) } } }
+    ) { uri -> export(uri, "Word-Datei") { ExportBuilder.docxBytes(project) } }
 
     ScrollScreen {
         Text(project.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Medium)

@@ -77,13 +77,21 @@ class AiClient(private val config: AiConfig) {
                 http.newCall(request).execute().use { response ->
                     val raw = response.body?.string().orEmpty()
                     if (response.isSuccessful) {
-                        return if (isOllama) parseOllama(raw) else parseOpenAi(raw)
-                    }
-                    // 429 / 5xx sind erneut versuchbar; alles andere ist endgültig.
-                    if (response.code != 429 && response.code !in 500..599) {
+                        val parsed = try {
+                            if (isOllama) parseOllama(raw) else parseOpenAi(raw)
+                        } catch (e: AiException) {
+                            throw e // inhaltlicher Fehler (leere Antwort) ist endgültig
+                        } catch (e: Exception) {
+                            lastError = "Ungültige Serverantwort"
+                            null   // defektes/abgeschnittenes JSON trotz 200 → erneut versuchen
+                        }
+                        if (parsed != null) return parsed
+                    } else if (response.code != 429 && response.code !in 500..599) {
+                        // 429 / 5xx sind erneut versuchbar; alles andere ist endgültig.
                         throw AiException("HTTP ${response.code}: ${raw.take(300)}")
+                    } else {
+                        lastError = "HTTP ${response.code}"
                     }
-                    lastError = "HTTP ${response.code}"
                 }
             } catch (e: IOException) {
                 lastError = "Netzwerkfehler: ${e.message}"

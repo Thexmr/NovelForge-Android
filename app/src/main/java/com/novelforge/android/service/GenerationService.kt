@@ -21,19 +21,22 @@ import com.novelforge.android.domain.Project
 import com.novelforge.android.domain.ProjectStatus
 import com.novelforge.android.generator.GenerationController
 import com.novelforge.android.generator.NovelGenerator
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
- * Foreground-Service: führt die Buchproduktion im Hintergrund aus (das Handy bleibt nutzbar).
- * EIN serieller Worker arbeitet eine Warteschlange ab: angeforderte Einzel-/Fortsetzungs-Bücher
- * zuerst, danach – solange Auto-Modus aktiv ist – fortlaufend neue Bücher. Dadurch geht keine
- * Anforderung verloren, auch nicht während eine andere Generierung schon läuft.
+ * Foreground-Service: führt die Buchproduktion im Hintergrund aus (Handy bleibt nutzbar).
+ * EIN serieller Worker arbeitet eine Warteschlange ab (Einzel-/Fortsetzungs-Bücher zuerst),
+ * danach – solange Auto-Modus aktiv ist – fortlaufend neue Bücher. Robust gegen Abbruch,
+ * Dauerfehler (Pacing + Abbruch nach mehreren Fehlern) und Stop/Start-Races.
  */
 class GenerationService : Service() {
 
@@ -41,16 +44,17 @@ class GenerationService : Service() {
     private var job: Job? = null
 
     private val lock = Any()
-    private val queue = ArrayDeque<String>()       // wartende Einzel-/Fortsetzungs-Bücher
+    private val queue = ArrayDeque<String>()
     private var workerRunning = false
     private var autoRound = 0
-    private val recentIdeas = ArrayDeque<String>() // Story-Memory: zuletzt erzeugte Titel (Auto-Modus)
+    private val recentIdeas = ArrayDeque<String>()
+    @Volatile private var lastStartId = 0
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // Erfüllt den startForegroundService→startForeground-Vertrag bei JEDEM Kommando.
-        ensureForeground("Buchproduktion läuft …")
+        lastStartId = startId
+        ensureForeground("Buchproduktion läuft …") // erfüllt den startForegroundService-Vertrag
         when (intent?.action) {
             ACTION_GENERATE -> intent.getStringExtra(EXTRA_ID)?.let { enqueue(it) }
             ACTION_AUTO -> { GenerationController.setAuto(true); ensureWorker() }
@@ -64,7 +68,6 @@ class GenerationService : Service() {
         ensureWorker()
     }
 
-    /** Startet genau EINEN seriellen Worker, falls keiner läuft. */
     private fun ensureWorker() {
         synchronized(lock) {
             if (workerRunning) return
@@ -76,49 +79,78 @@ class GenerationService : Service() {
     private suspend fun worker() {
         try {
             val cfg = SettingsStore(applicationContext).configFlow.first()
+            var failures = 0
             while (true) {
                 val pid = synchronized(lock) { if (queue.isNotEmpty()) queue.removeFirst() else null }
-                if (pid != null) { generateOne(cfg, pid); continue }
-                if (GenerationController.auto.value) { generateAuto(cfg); continue }
-                // Nichts mehr zu tun – atomar abmelden (schließt die Producer/Consumer-Lücke).
-                synchronized(lock) {
-                    if (queue.isEmpty() && !GenerationController.auto.value) {
-                        workerRunning = false
-                        return@worker
-                    }
+                if (pid != null) {
+                    try { generateOne(cfg, pid) }
+                    catch (c: CancellationException) { throw c }
+                    catch (e: Exception) { GenerationController.setError(e.message ?: "Fehler") }
+                    failures = 0
+                    continue
                 }
+                if (GenerationController.auto.value) {
+                    val ok = try { generateAuto(cfg) }
+                    catch (c: CancellationException) { throw c }
+                    catch (e: Exception) { GenerationController.setError(e.message ?: "Fehler"); false }
+                    failures = if (ok) 0 else failures + 1
+                    // Circuit-Breaker: bei Dauerfehlern (z. B. falscher API-Key) Auto-Modus stoppen.
+                    if (failures >= 3) {
+                        GenerationController.setError("Auto-Modus gestoppt – bitte API-Key/Modell prüfen.")
+                        GenerationController.setAuto(false)
+                    }
+                    continue
+                }
+                // Nichts mehr zu tun → unter Lock abmelden und Schleife verlassen.
+                val done = synchronized(lock) {
+                    if (queue.isEmpty() && !GenerationController.auto.value) { workerRunning = false; true } else false
+                }
+                if (done) break
             }
-        } finally {
+        } catch (c: CancellationException) {
+            throw c
+        } catch (e: Exception) {
+            GenerationController.setError(e.message ?: "Fehler")
             synchronized(lock) { workerRunning = false }
-            GenerationController.setActive(null)
+        } finally {
             GenerationController.setProgress(null)
-            ProjectRepository.touch()
-            stopSelfSafely()
+            // Nur stoppen, wenn KEIN neuer Worker übernommen hat und nichts mehr ansteht.
+            val stop = synchronized(lock) { !workerRunning && queue.isEmpty() && !GenerationController.auto.value }
+            if (stop) {
+                GenerationController.setActive(null)
+                stopSelfSafely()
+            }
         }
     }
 
-    private suspend fun generateOne(cfg: AiConfig, projectId: String) {
-        val project = ProjectRepository.get(projectId) ?: return
+    /** @return true bei erfolgreichem Buch, false bei Fehler. */
+    private suspend fun generateOne(cfg: AiConfig, projectId: String): Boolean {
+        val project = ProjectRepository.get(projectId) ?: return false
         GenerationController.setActive(project.id)
         GenerationController.setError(null)
         updateNotification(project.title)
-        try {
+        return try {
             NovelGenerator(cfg).generate(project) { p ->
                 GenerationController.setProgress(p)
                 ProjectRepository.touch()
                 updateNotification("${project.title}: ${p.phase}")
             }
             GenerationController.incCompleted()
+            ProjectRepository.upsert(project) // Endstatus COMPLETED hart sichern
+            true
+        } catch (c: CancellationException) {
+            throw c
         } catch (e: Exception) {
             project.status = ProjectStatus.FAILED
             GenerationController.setError(e.message ?: "Unbekannter Fehler")
+            ProjectRepository.upsert(project) // Endstatus FAILED hart sichern
+            false
         } finally {
             GenerationController.setProgress(null)
-            ProjectRepository.touch()
         }
     }
 
-    private suspend fun generateAuto(cfg: AiConfig) {
+    private suspend fun generateAuto(cfg: AiConfig): Boolean {
         val ai = AiClient(cfg)
         val genre = Genres.all[autoRound % Genres.all.size]
         autoRound++
@@ -129,7 +161,7 @@ class GenerationService : Service() {
                 PromptFactory.bookIdea(genre, "Deutsch", avoid),
                 temperature = 0.95, maxTokens = 500
             )
-        } catch (e: Exception) { "" }
+        } catch (c: CancellationException) { throw c } catch (e: Exception) { "" }
         val title = parseField(ideaText, "TITEL").ifBlank { "$genre-Roman $autoRound" }
         val premise = parseField(ideaText, "PRÄMISSE")
         synchronized(lock) {
@@ -137,32 +169,40 @@ class GenerationService : Service() {
             while (recentIdeas.size > 12) recentIdeas.removeFirst()
         }
         val project = Project(
-            title = title,
-            authorName = "NovelForge",
-            genre = genre,
-            targetPageCount = 200,
-            chapterTarget = 16,
-            createdAt = System.currentTimeMillis(),
+            title = title, authorName = "NovelForge", genre = genre,
+            targetPageCount = 200, chapterTarget = 16, createdAt = System.currentTimeMillis(),
         )
         project.profile.premise = premise
         ProjectRepository.upsert(project)
-        generateOne(cfg, project.id)
+        val ok = generateOne(cfg, project.id)
+        delay(1500) // Pacing: verhindert Heißlaufen bei schnellen Dauerfehlern
+        return ok
     }
 
     private fun stopAll() {
         GenerationController.setAuto(false)
-        synchronized(lock) { queue.clear(); workerRunning = false }
-        job?.cancel()
-        job = null
-        GenerationController.setActive(null)
-        GenerationController.setProgress(null)
-        stopSelfSafely()
+        synchronized(lock) { queue.clear() }
+        val j = job
+        scope.launch {
+            runCatching { j?.cancelAndJoin() }
+            synchronized(lock) { workerRunning = false }
+            GenerationController.setActive(null)
+            GenerationController.setProgress(null)
+            stopSelfSafely()
+        }
     }
 
     private fun parseField(text: String, label: String): String {
         if (text.isBlank()) return ""
         val regex = Regex("(?im)^\\**\\s*$label\\s*:?\\**\\s*(.+)$")
         return regex.find(text)?.groupValues?.getOrNull(1)?.trim().orEmpty()
+    }
+
+    // Android 14+: Foreground-Service-Zeitlimit (dataSync, 6 h/Tag) → sauber stoppen.
+    override fun onTimeout(startId: Int) {
+        GenerationController.setAuto(false)
+        GenerationController.setError("Hintergrundzeit abgelaufen – bitte erneut starten.")
+        stopAll()
     }
 
     // ---- Foreground / Notification -------------------------------------------
@@ -203,7 +243,8 @@ class GenerationService : Service() {
             @Suppress("DEPRECATION")
             stopForeground(true)
         }
-        stopSelf()
+        // stopSelf(startId): no-op, falls inzwischen ein neueres Kommando eintraf.
+        stopSelf(lastStartId)
     }
 
     override fun onDestroy() {

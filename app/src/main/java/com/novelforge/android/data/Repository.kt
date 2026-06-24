@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.novelforge.android.ai.AiConfig
 import com.novelforge.android.domain.Project
+import com.novelforge.android.domain.ProjectStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -46,11 +47,13 @@ class SettingsStore(private val context: Context) {
 }
 
 /**
- * Prozessweite Projektablage. Hält die Projekte im Speicher (reaktiver StateFlow) und
- * spiegelt sie als JSON-Schnappschuss in den App-internen Speicher, damit erzeugte
- * Bücher App-Neustarts überleben (auch Auto-Modus-Bücher).
+ * Prozessweite Projektablage. `live` hält die kanonischen (im Generator in-place mutierten)
+ * Instanzen; der StateFlow emittiert bei jeder Änderung FRISCHE Tiefkopien – nur so erkennt
+ * Compose neue Kapitel/Status live (MutableStateFlow unterdrückt sonst gleich-wirkende Werte,
+ * weil Project eine data class ist). Spiegelung als JSON-Schnappschuss überlebt App-Neustarts.
  */
 object ProjectRepository {
+    private val live = mutableListOf<Project>()
     private val _projects = MutableStateFlow<List<Project>>(emptyList())
     val projects: StateFlow<List<Project>> = _projects.asStateFlow()
 
@@ -59,54 +62,78 @@ object ProjectRepository {
     private var file: File? = null
     @Volatile private var lastPersist = 0L
 
-    /** Einmalig beim App-Start aufrufen: lädt den gespeicherten Bestand (im Hintergrund, kein ANR). */
+    /** Einmalig beim App-Start: lädt den Bestand im Hintergrund (kein ANR). */
     fun init(context: Context) {
         if (file != null) return
         val f = File(context.applicationContext.filesDir, "projects.json")
         file = f
         ioScope.launch {
-            runCatching {
-                if (f.exists()) {
-                    val loaded = ProjectJson.decodeList(f.readText())
-                    // Nicht überschreiben, falls in der Zwischenzeit schon etwas angelegt wurde.
-                    if (loaded.isNotEmpty() && _projects.value.isEmpty()) _projects.value = loaded
-                }
+            val text = runCatching { if (f.exists()) f.readText() else "" }.getOrDefault("")
+            if (text.isBlank()) return@launch
+            val loaded = runCatching { ProjectJson.decodeList(text) }.getOrElse {
+                // Korrupte Datei NICHT stillschweigend mit Leer überschreiben → sichern.
+                runCatching { synchronized(fileLock) { f.copyTo(File(f.parentFile, "projects.json.bak"), overwrite = true) } }
+                return@launch
             }
+            if (loaded.isEmpty()) return@launch
+            synchronized(live) {
+                if (live.isNotEmpty()) return@launch
+                // Kaltstart: keine Generierung kann laufen → hängende GENERATING-Bücher = FEHLGESCHLAGEN.
+                loaded.forEach { if (it.status == ProjectStatus.GENERATING) it.status = ProjectStatus.FAILED }
+                live.addAll(loaded)
+            }
+            emit(force = true)
         }
     }
 
-    fun delete(id: String) {
-        _projects.value = _projects.value.filterNot { it.id == id }
-        persist(force = true)
-    }
-
     fun upsert(project: Project) {
-        val current = _projects.value.toMutableList()
-        val idx = current.indexOfFirst { it.id == project.id }
-        if (idx >= 0) current[idx] = project else current.add(0, project)
-        _projects.value = current
-        persist(force = true)
+        synchronized(live) {
+            val idx = live.indexOfFirst { it.id == project.id }
+            if (idx >= 0) live[idx] = project else live.add(0, project)
+        }
+        emit(force = true)
     }
 
-    fun get(id: String): Project? = _projects.value.firstOrNull { it.id == id }
+    fun get(id: String): Project? = synchronized(live) { live.firstOrNull { it.id == id } }
 
-    fun touch() {
-        // Erzwingt eine Flow-Emission, wenn ein Projekt in-place mutiert wurde.
-        _projects.value = _projects.value.toList()
-        persist(force = false)
+    fun delete(id: String) {
+        synchronized(live) { live.removeAll { it.id == id } }
+        emit(force = true)
     }
 
-    /** Schreibt den Bestand als JSON. `force=false` drosselt auf höchstens alle ~2,5 s. */
-    private fun persist(force: Boolean) {
+    fun touch() = emit(force = false)
+
+    private fun emit(force: Boolean) {
+        val snap = synchronized(live) { live.map { snapshot(it) } }
+        _projects.value = snap
+        persist(snap, force)
+    }
+
+    /** Tiefkopie (entkoppelt von der live-mutierten Instanz), damit der Flow wirklich emittiert. */
+    private fun snapshot(p: Project): Project = try {
+        p.copy(
+            profile = p.profile.copy(),
+            chapters = p.chapters.map { it.copy() }.toMutableList(),
+            characters = p.characters.map { it.copy() }.toMutableList(),
+        )
+    } catch (e: Exception) {
+        p // sehr selten: gleichzeitige Mutation während des Snapshots – Live-Instanz als Fallback
+    }
+
+    private fun persist(snapshot: List<Project>, force: Boolean) {
         val f = file ?: return
         val now = System.currentTimeMillis()
         if (!force && now - lastPersist < 2500) return
         lastPersist = now
-        val snapshot = _projects.value
         ioScope.launch {
             runCatching {
                 val json = ProjectJson.encodeList(snapshot)
-                synchronized(fileLock) { f.writeText(json) }
+                synchronized(fileLock) {
+                    // Atomar: erst in .tmp, dann umbenennen → nie eine halb geschriebene Datei.
+                    val tmp = File(f.parentFile, "projects.json.tmp")
+                    tmp.writeText(json)
+                    if (!tmp.renameTo(f)) { f.writeText(json); tmp.delete() }
+                }
             }
         }
     }
