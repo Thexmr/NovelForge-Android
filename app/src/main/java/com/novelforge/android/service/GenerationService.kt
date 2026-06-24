@@ -78,7 +78,13 @@ class GenerationService : Service() {
 
     private suspend fun worker() {
         try {
-            val cfg = SettingsStore(applicationContext).configFlow.first()
+            val cfg = try {
+                SettingsStore(applicationContext).configFlow.first()
+            } catch (c: CancellationException) {
+                throw c
+            } catch (e: Exception) {
+                AiConfig() // Fallback: Bücher schlagen sauber fehl statt zu stranden
+            }
             var failures = 0
             while (true) {
                 val pid = synchronized(lock) { if (queue.isNotEmpty()) queue.removeFirst() else null }
@@ -185,10 +191,19 @@ class GenerationService : Service() {
         val j = job
         scope.launch {
             runCatching { j?.cancelAndJoin() }
-            synchronized(lock) { workerRunning = false }
-            GenerationController.setActive(null)
             GenerationController.setProgress(null)
-            stopSelfSafely()
+            // Falls während des Abbruchs etwas Neues angefordert wurde: weiterarbeiten statt verlieren.
+            val restart = synchronized(lock) {
+                workerRunning = false
+                queue.isNotEmpty() || GenerationController.auto.value
+            }
+            if (restart) {
+                ensureForeground("Buchproduktion läuft …")
+                ensureWorker()
+            } else {
+                GenerationController.setActive(null)
+                stopSelfSafely()
+            }
         }
     }
 

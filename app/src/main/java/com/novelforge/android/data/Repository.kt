@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.io.File
+import java.util.ConcurrentModificationException
 
 private val Context.dataStore by preferencesDataStore(name = "novelforge_settings")
 
@@ -110,14 +111,23 @@ object ProjectRepository {
     }
 
     /** Tiefkopie (entkoppelt von der live-mutierten Instanz), damit der Flow wirklich emittiert. */
-    private fun snapshot(p: Project): Project = try {
-        p.copy(
-            profile = p.profile.copy(),
-            chapters = p.chapters.map { it.copy() }.toMutableList(),
-            characters = p.characters.map { it.copy() }.toMutableList(),
-        )
-    } catch (e: Exception) {
-        p // sehr selten: gleichzeitige Mutation während des Snapshots – Live-Instanz als Fallback
+    private fun snapshot(p: Project): Project = p.copy(
+        profile = p.profile.copy(),
+        chapters = safeCopy(p.chapters) { it.copy() },
+        characters = safeCopy(p.characters) { it.copy() },
+    )
+
+    /**
+     * Kopiert eine Liste auch dann ohne Absturz, wenn der Generator-Thread sie gerade strukturell
+     * ändert (clear()/addAll()). Bei Kollision kurz erneut versuchen; nie die Live-Instanz durchreichen.
+     */
+    private fun <T> safeCopy(src: List<T>, copy: (T) -> T): MutableList<T> {
+        repeat(5) {
+            try { return src.map(copy).toMutableList() }
+            catch (e: ConcurrentModificationException) { /* erneut versuchen */ }
+            catch (e: IndexOutOfBoundsException) { /* gleiche Ursache, erneut versuchen */ }
+        }
+        return mutableListOf() // Notnagel: der nächste emit() liefert die korrekte Kopie
     }
 
     private fun persist(snapshot: List<Project>, force: Boolean) {

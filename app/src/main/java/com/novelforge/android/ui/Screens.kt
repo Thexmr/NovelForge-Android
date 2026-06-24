@@ -523,9 +523,10 @@ fun SettingsScreen(vm: AppViewModel) {
     var model by rememberSaveable { mutableStateOf(AiConfig().model) }
     var writingModel by rememberSaveable { mutableStateOf("") }
     var seeded by rememberSaveable { mutableStateOf(false) }
-    // Gespeicherte Werte EINMAL übernehmen, sobald sie aus DataStore eintreffen – laufende Eingaben bleiben erhalten.
+    // Gespeicherte Werte EINMAL übernehmen, sobald die echte (vom Default abweichende) Konfiguration
+    // aus DataStore eintrifft – laufende Eingaben bleiben erhalten.
     LaunchedEffect(config) {
-        if (!seeded && config.apiKey.isNotBlank()) {
+        if (!seeded && config != AiConfig()) {
             baseUrl = config.baseUrl; model = config.model
             apiKey = config.apiKey; writingModel = config.writingModel
             seeded = true
