@@ -143,6 +143,28 @@ object ContentQuality {
         return result
     }
 
+    /**
+     * Entfernt eine erste Textzeile/einen ersten Satz, der die Kapitelüberschrift wörtlich
+     * wiederholt (Modell-Artefakt: Titel erscheint sonst doppelt – als Überschrift UND erster Satz).
+     */
+    fun stripLeadingTitleEcho(text: String, title: String): String {
+        val normTitle = normalizeTitleKey(title)
+        if (normTitle.length < 8) return text
+        val lines = text.split("\n").toMutableList()
+        val idx = lines.indexOfFirst { it.trim().isNotEmpty() }
+        if (idx < 0) return text
+        val line = lines[idx].trim()
+        val end = line.indexOfFirst { it == '.' || it == '!' || it == '?' || it == '…' }
+        val firstSentence = if (end >= 0) line.substring(0, end + 1) else line
+        if (normalizeTitleKey(firstSentence) != normTitle) return text
+        val rest = if (end >= 0 && end + 1 < line.length) line.substring(end + 1).trim() else ""
+        if (rest.isEmpty()) lines.removeAt(idx) else lines[idx] = rest
+        return lines.joinToString("\n").trim()
+    }
+
+    private fun normalizeTitleKey(s: String): String =
+        s.lowercase().trim(' ', '\n', '\t', '.', '!', '?', ':', ';', '—', '–', '-', '"', '\'', '„', '“', '”', '»', '«')
+
     private val aiTellPhrases = listOf(
         "machte sich breit", "breitete sich aus", "durchfuhr sie", "durchfuhr ihn", "durchströmte sie",
         "überkam sie", "überkam ihn", "stieg in ihr auf", "stieg in ihm auf", "es war, als ob", "es war, als würde",

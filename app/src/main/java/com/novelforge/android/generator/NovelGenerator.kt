@@ -163,6 +163,7 @@ class NovelGenerator(config: AiConfig) {
             var text = ContentQuality.humanizeProse(
                 ContentQuality.strippingInlineFormatting(
                     ContentQuality.strippingPromptArtifacts(best)))
+            text = ContentQuality.stripLeadingTitleEcho(text, ch.title)
             if (text.isBlank() || ContentQuality.containsMetaRequest(text)) {
                 text = "[Kapitel ${ch.number} konnte nicht erzeugt werden${lastErr?.let { " ($it)" } ?: ""}. Bitte einzeln neu erzeugen.]"
             }
