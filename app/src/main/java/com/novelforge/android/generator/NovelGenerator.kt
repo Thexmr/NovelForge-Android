@@ -211,6 +211,14 @@ class NovelGenerator(config: AiConfig) {
         )
         parseKdp(kdpText, project)
 
+        // Platzhalter-Buchtitel (z. B. „Titel") durch den echten KDP-Verkaufstitel ersetzen.
+        val lowerTitle = project.title.trim().lowercase()
+        if (project.profile.kdpTitle.isNotBlank() &&
+            (lowerTitle == "titel" || lowerTitle == "neues buch" || lowerTitle.isBlank() ||
+                Regex("^kapitel\\s+\\d+$").matches(lowerTitle))) {
+            project.title = project.profile.kdpTitle
+        }
+
         // 6) Cover-Bildprompt für das KDP-Coverdesign.
         onProgress(GenProgress("Cover-Prompt erstellen …", 0.97f))
         project.profile.coverPrompt = try {

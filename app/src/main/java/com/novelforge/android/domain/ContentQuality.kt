@@ -120,7 +120,27 @@ object ContentQuality {
         t = doubleComma.replace(t, ",")
         t = leadingComma.replace(t, "")
         t = multiSpace.replace(t, " ")
+        t = collapseImmediateRepeats(t)
         return t
+    }
+
+    private val dupSentence = Regex("([^\\n]{12,}?[.!?…\"”])\\s+\\1")
+
+    /**
+     * Entfernt Modell-Echo: unmittelbar wiederholte identische Zeilen (am Kapitelanfang
+     * verdreifacht sich oft der erste Satz) und einen sofort doppelten Satz innerhalb einer
+     * Zeile. Durch anderen Text getrennte Wiederholungen (Anaphern) bleiben unberührt.
+     */
+    fun collapseImmediateRepeats(text: String): String {
+        val deduped = ArrayList<String>()
+        for (line in text.split("\n")) {
+            val trimmed = line.trim()
+            if (trimmed.isNotEmpty() && deduped.isNotEmpty() && deduped.last().trim() == trimmed) continue
+            deduped.add(line)
+        }
+        var result = deduped.joinToString("\n")
+        repeat(2) { result = dupSentence.replace(result, "$1") } // Tripel → Dublette → Einzel
+        return result
     }
 
     private val aiTellPhrases = listOf(
