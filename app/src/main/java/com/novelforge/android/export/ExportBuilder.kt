@@ -32,6 +32,7 @@ object ExportBuilder {
         if (p.kdpCategories.isNotBlank()) sb.append("KATEGORIEN:\n").append(p.kdpCategories).append("\n\n")
         if (p.coverPrompt.isNotBlank()) sb.append("COVER-PROMPT:\n").append(p.coverPrompt).append("\n\n")
         return sb.toString().trim()
+    }
 
     fun epubBytes(project: Project): ByteArray {
         val chapters = project.chapters.sortedBy { it.number }
