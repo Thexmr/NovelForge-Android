@@ -31,23 +31,7 @@ object ExportBuilder {
         if (p.kdpKeywords.isNotBlank()) sb.append("KEYWORDS:\n").append(p.kdpKeywords).append("\n\n")
         if (p.kdpCategories.isNotBlank()) sb.append("KATEGORIEN:\n").append(p.kdpCategories).append("\n\n")
         if (p.coverPrompt.isNotBlank()) sb.append("COVER-PROMPT:\n").append(p.coverPrompt).append("\n\n")
-        sb.append(kdpChecklist())
         return sb.toString().trim()
-    }
-
-    private fun kdpChecklist(): String = """
-        KDP-UPLOAD-CHECKLISTE
-        ====================
-        [ ] KI-Offenlegung: Beim Veröffentlichen Amazons Frage zu KI-Inhalten WAHRHEITSGEMÄSS
-            beantworten (Text wurde KI-unterstützt erstellt). Das ist erlaubt und schützt dein
-            Konto – nicht verschweigen.
-        [ ] Genre & Kategorien zum tatsächlichen Inhalt wählen (richtige Erwartung = weniger Retouren).
-        [ ] Sinnlichkeitsgrad passend zur Kategorie; explizite Titel als 18+ kennzeichnen.
-        [ ] Keine Marken-/Urheberrechtsverletzung in Titel, Text und Cover.
-        [ ] Cover ohne eingebauten Text/Logos; Titel + Autor separat als Typo-Overlay setzen.
-        [ ] Manuskript final gegengelesen (die Amazon-Leseprobe entscheidet den Kauf).
-
-    """.trimIndent()
 
     fun epubBytes(project: Project): ByteArray {
         val chapters = project.chapters.sortedBy { it.number }
