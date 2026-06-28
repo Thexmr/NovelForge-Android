@@ -31,6 +31,18 @@ class NovelGenerator(config: AiConfig) {
     suspend fun generate(project: Project, onProgress: (GenProgress) -> Unit) {
         project.status = ProjectStatus.GENERATING
 
+        // Romance-Genres ohne gewählten Sinnlichkeitsgrad nicht „clean" erzeugen – sinnvollen
+        // Standard setzen, damit Dark Romance/Liebesroman die Genre-Erwartung (Wärme) einlöst.
+        if (project.spiceLevel == 0) {
+            val g = project.genre.lowercase()
+            project.spiceLevel = when {
+                g.contains("dark romance") || g.contains("erotik") || g.contains("erotic") || g.contains("spicy") -> 4
+                g.contains("liebes") || g.contains("romance") || g.contains("romantik") ||
+                    g.contains("new adult") || g.contains("romantasy") -> 2
+                else -> 0
+            }
+        }
+
         // Einzigartige Stil-DNA (respektiert vorgegebene Perspektive/Tempus, falls gesetzt).
         val signature = NarrativeSignature.make(
             NarrativeSignature.stableSeed("${project.id}|${project.title}|${project.genre}")
