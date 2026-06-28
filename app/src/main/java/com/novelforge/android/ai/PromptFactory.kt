@@ -12,6 +12,40 @@ object PromptFactory {
 
     private fun block(s: String) = if (s.isBlank()) "" else "\n$s\n"
 
+    /** Analysiert Titel + Genre und leitet eine verbindliche, maßgeschneiderte Genre-Direktive ab. */
+    fun genreBrief(title: String, genre: String, tropes: String, spiceLevel: Int, language: String): String {
+        val tropesLine = if (tropes.isBlank()) "" else "\nVom Autor gewünschte Tropes: $tropes"
+        val spiceLine = if (spiceLevel > 0) "\nSinnlichkeitsgrad: $spiceLevel/5 (${SpiceLevel.label(spiceLevel)})" else ""
+        return """
+        Der Autor hat Titel und Genre fest vorgegeben – beides ist UNVERÄNDERLICH:
+        TITEL: "$title"
+        GENRE: $genre
+        Sprache: $language$tropesLine$spiceLine
+
+        Analysiere TITEL und GENRE gemeinsam und leite die VERBINDLICHEN, auf genau dieses Buch
+        zugeschnittenen Schreibvorgaben ab, damit der Roman zweifelsfrei im Genre "$genre" landet
+        und das Versprechen des Titels "$title" einlöst. Konkret und spezifisch, nicht allgemein.
+
+        Gib AUSSCHLIESSLICH diese Direktive aus (Labels exakt so):
+        KERNVERSPRECHEN: [die eine Erwartung, die ein Leser dieses Genres bei diesem Titel garantiert erfüllt sehen will]
+        TON & STIMMUNG: [3-5 Stichworte]
+        PFLICHT-TROPES: [3-5 konkrete, genre-typische Tropes, die wirklich geliefert werden müssen]
+        PFLICHT-SZENEN: [3-5 genre-typische Schlüsselmomente, die vorkommen müssen]
+        TEMPO & STRUKTUR: [wie sich dieses Genre erzählt – Tempo, Kapitelenden, Eskalation]
+        SINNLICHKEIT: [bei Romance konkret: wie Anziehung/Begehren über das Buch eskaliert und welche Nähe-/Spice-Stufe; sonst kurz]
+        TITEL-EINLÖSUNG: [wie der Titel "$title" erzählerisch eingelöst und am Ende beantwortet wird]
+        GENRE-ABDRIFT VERBOTEN: [die 2-3 typischsten Wege, dieses Genre zu verfehlen – konkret untersagen; bei Romance z. B. kein Ermittlungs-/Psychothriller-Plot als Hauptlinie, keine kühle Beziehung ohne Anziehung]
+        VERGLEICHSTITEL: [2-3 "Für Fans von …"]
+        """.trimIndent()
+    }
+
+    /** Verbindlicher Genre-Direktive-Block für die nachgelagerten Prompts. */
+    private fun genreDirectiveBlock(brief: String): String = if (brief.isBlank()) "" else """
+
+        GENRE-DIREKTIVE (verbindlich, aus Titel + Genre abgeleitet – das GANZE Buch hält sich strikt daran):
+        ${brief.trim()}
+        """
+
     fun bookIdea(genre: String, language: String, avoid: List<String> = emptyList()): String {
         val avoidBlock = if (avoid.isEmpty()) "" else
             "\nVERMEIDE Wiederholungen – diese Titel/Ideen gab es in dieser Produktion schon, liefere etwas DEUTLICH anderes (Setting, Hook, Figuren): ${avoid.joinToString(" | ")}\n"
@@ -85,7 +119,7 @@ object PromptFactory {
     fun concept(
         title: String, genre: String, language: String, style: String,
         pageCount: Int, tropes: String = "", bookSignature: String = "",
-        sequelContext: String = "",
+        sequelContext: String = "", genreBrief: String = "",
     ): String {
         val tropeBlock = if (tropes.isBlank()) "" else
             "\nTROPE-VERTRAG (VERBINDLICH – die Zielgruppe kauft genau diese Tropes; liefere sie deutlich über den ganzen Bogen): $tropes\n"
@@ -96,7 +130,7 @@ object PromptFactory {
         Sprache: $language
         Stilprofil: $style
         Zielumfang: ca. $pageCount Seiten
-        $tropeBlock${block(bookSignature)}${sequelBlock(sequelContext)}
+        $tropeBlock${block(bookSignature)}${sequelBlock(sequelContext)}${genreDirectiveBlock(genreBrief)}
         VERBINDLICH: Entwickle das Konzept so, dass es exakt zum Titel "$title" und zum Genre "$genre" passt und den Titel erzählerisch einlöst. Diese Bindung gilt fürs GANZE Buch: jede Hauptfigur, der Hauptkonflikt und jede Szene erfüllen das Genre "$genre" und lösen das Titel-Versprechen ein – der fertige Roman liefert genau das, was Titel und Genre versprechen.
         BESTSELLER-KERN: zugespitzte High-Concept-Prämisse (in EINEM Satz fassbar, kein generisches "Frau kehrt heim und findet Geheimnisse"); eine AKTIVE Hauptfigur, die die Handlung durch eigene Entscheidungen treibt; ein scharfer, präsenter Gegenpart mit echter Chemie/Reibung; das Genre wird in Szenen wirklich GELIEFERT (bei (Dark) Romance/Slow Burn: spürbar eskalierende Anziehung mit Auszahlung, kein "No Burn").
 
@@ -113,28 +147,28 @@ object PromptFactory {
     fun plot(
         title: String, genre: String, style: String, concept: String,
         pageCount: Int, chapterCount: Int, bookSignature: String = "",
-        sequelContext: String = "",
+        sequelContext: String = "", genreBrief: String = "",
     ): String = """
         Erstelle den vollständigen Plot für den Roman "$title".
         Genre: $genre | Stil: $style | Umfang: ca. $pageCount Seiten in $chapterCount Kapiteln.
 
         Konzept:
         $concept
-        ${block(bookSignature)}${sequelBlock(sequelContext)}
+        ${block(bookSignature)}${sequelBlock(sequelContext)}${genreDirectiveBlock(genreBrief)}
         Baue den Plot nach bewährter Bestseller-Dramaturgie in drei Akten (Eröffnungsbild & Alltag mit Riss, auslösendes Ereignis, erster Wendepunkt, steigende Komplikationen, Mittelpunkt-Umkehr, Tiefpunkt, finale Konfrontation, Höhepunkt & Auflösung). Falls die Stil-DNA eine andere Struktur vorgibt, ordne die Beats dieser Struktur unter.
         Formuliere die zentrale dramatische Frage, webe eine verstärkende Nebenhandlung ein und plane Kapitelenden mit offenen Haken. Schreibe als zusammenhängenden, klar gegliederten Text.
     """.trimIndent()
 
     fun chapterPlan(
         title: String, genre: String, plot: String, chapterCount: Int,
-        wordsPerChapter: Int, bookSignature: String = "",
+        wordsPerChapter: Int, bookSignature: String = "", genreBrief: String = "",
     ): String = """
         Plane die Kapitelstruktur für den Roman "$title" (Genre: $genre).
         Es sollen GENAU $chapterCount Kapitel mit je ca. $wordsPerChapter Wörtern sein.
 
         Plot:
         ${plot.take(6000)}
-        ${block(bookSignature)}
+        ${block(bookSignature)}${genreDirectiveBlock(genreBrief)}
         Regeln: JEDES Kapitel endet mit einem Haken (offene Frage, Bedrohung, Enthüllung). Variiere das Tempo. Kapiteltitel kreativ und doppelbödig, KEINE "Kapitel N"/Phasennamen.
 
         Gib für JEDES Kapitel GENAU eine Zeile aus (Felder mit | getrennt):
@@ -158,7 +192,7 @@ object PromptFactory {
         chapterNumber: Int, chapterTitle: String, chapterGoal: String, chapterConflict: String,
         perspective: String, tense: String, storySoFar: String, targetWords: Int,
         isFirst: Boolean, isLast: Boolean, bookSignature: String = "", spiceLevel: Int = 0,
-        charactersSummary: String = "",
+        charactersSummary: String = "", genreBrief: String = "",
     ): String {
         val spice = SpiceLevel.generationDirective(spiceLevel)
         val position = when {
@@ -169,7 +203,7 @@ object PromptFactory {
         return """
         Schreibe Kapitel $chapterNumber ("$chapterTitle") des Romans "$bookTitle".
         SPRACHE: ausschließlich $language. STIL: $style. Erzählperspektive: $perspective. Zeitform: $tense.
-        ${block(bookSignature)}${block(spice)}
+        ${block(bookSignature)}${block(spice)}${genreDirectiveBlock(genreBrief)}
         Kapitelziel: $chapterGoal
         Zentraler Konflikt: $chapterConflict
         ${if (charactersSummary.isBlank()) "" else "FIGUREN (Namen und Eigenschaften konsistent halten):\n$charactersSummary"}

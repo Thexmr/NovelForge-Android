@@ -69,6 +69,18 @@ class NovelGenerator(config: AiConfig) {
             if (newTitle.isNotBlank()) project.title = newTitle
         }
 
+        // Genre-Direktive: Titel + Genre vorab analysieren → verbindliche Vorgaben fürs ganze Buch.
+        onProgress(GenProgress("Genre-Direktive ableiten …", 0.04f))
+        val genreBrief = try {
+            ai.chat(
+                system = "Du bist Verlagslektor und Genre-Stratege. Antworte nur mit der Direktive.",
+                prompt = PromptFactory.genreBrief(
+                    project.title, project.genre, project.tropes, project.spiceLevel, project.language
+                ),
+                temperature = 0.5, maxTokens = 700
+            ).trim()
+        } catch (e: Exception) { "" }
+
         // 1) Konzept
         onProgress(GenProgress("Konzept entwickeln …", 0.05f))
         val conceptText = ai.chat(
@@ -76,7 +88,7 @@ class NovelGenerator(config: AiConfig) {
             prompt = PromptFactory.concept(
                 project.title, project.genre, project.language, project.styleProfile,
                 project.targetPageCount, project.tropes, project.styleSignature,
-                sequelContext = project.sequelContext
+                sequelContext = project.sequelContext, genreBrief = genreBrief
             ),
             temperature = 0.85, maxTokens = 1400
         )
@@ -90,7 +102,7 @@ class NovelGenerator(config: AiConfig) {
                 project.title, project.genre, project.styleProfile,
                 project.profile.synopsis.ifBlank { project.profile.premise },
                 project.targetPageCount, project.chapterTarget, project.styleSignature,
-                sequelContext = project.sequelContext
+                sequelContext = project.sequelContext, genreBrief = genreBrief
             ),
             temperature = 0.8, maxTokens = 2200
         )
@@ -101,7 +113,8 @@ class NovelGenerator(config: AiConfig) {
             system = "Du bist ein Bestseller-Lektor mit Gespür für Kapitelstruktur.",
             prompt = PromptFactory.chapterPlan(
                 project.title, project.genre, plot, project.chapterTarget,
-                project.targetPageCount * 250 / project.chapterTarget, project.styleSignature
+                project.targetPageCount * 250 / project.chapterTarget, project.styleSignature,
+                genreBrief = genreBrief
             ),
             temperature = 0.7, maxTokens = 2200
         )
@@ -147,7 +160,7 @@ class NovelGenerator(config: AiConfig) {
                 project.profile.narrativePerspective, project.profile.tense,
                 storySoFar, wordsPerChapter,
                 isFirst = index == 0, isLast = index == project.chapters.size - 1,
-                project.styleSignature, project.spiceLevel, charactersSummary
+                project.styleSignature, project.spiceLevel, charactersSummary, genreBrief = genreBrief
             )
             val minWords = maxOf(120, (wordsPerChapter * 0.6).toInt())
             var best = ""
