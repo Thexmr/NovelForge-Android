@@ -46,6 +46,30 @@ object PromptFactory {
         ${brief.trim()}
         """
 
+    /** 10 virale Titel-Kandidaten (grounded in der Story) + die stärkste Wahl. */
+    fun viralTitles(genre: String, premise: String, language: String, count: Int = 10): String = """
+        Erfinde $count extrem starke, klickstarke Titel für diesen Roman (Genre: $genre, Sprache: $language) – Titel, die im Amazon-Suchergebnis sofort Neugier wecken und zum Kauf treiben.
+
+        Worum es geht:
+        ${premise.take(1500)}
+
+        WAS EINEN VIRALEN TITEL AUSMACHT:
+        - Neugier-Lücke: ein angedeutetes Geheimnis, eine Drohung, eine Frage, ein Tabu – der Leser MUSS wissen, was dahintersteckt.
+        - Emotion und Einsatz sofort spürbar (Verrat, verbotene Liebe, Gefahr, Verlust, Rache).
+        - Konkret und bildhaft, nicht abstrakt. Kurz: 2-6 Wörter, im Thumbnail sofort lesbar.
+        - Genre-Signal: der Titel fühlt sich nach $genre an.
+        - Direkte Ansprache (du/dich/mein/dein) erzeugt Nähe und Sofort-Spannung.
+        Starke Bauarten (mischen): Bevor/Wenn/Warum/Was ...; Das Mädchen, das ...; eine Drohung oder ein Versprechen als Satz; ein aufgeladenes konkretes Objekt; eine Negation (Niemand ..., Kein ...); ein Name plus Einsatz.
+
+        STRENG VERBOTEN: Genre-Wörter als Titel (Liebesroman, Erotik-Roman, Thriller); Platzhalter (Titel); kryptische Wort-Collagen oder Nonsens (z. B. Schluckauf im Erdboden); Berufs-/Ort-Klischees (Die [Beruf] von [Ort]); mehr als 6 Wörter; Tippfehler; alles, was auf zehn anderen Büchern stehen könnte.
+
+        Antworte exakt in diesem Format:
+        KANDIDATEN:
+        1) ...
+        $count) ...
+        BESTER: [exakt einer der Kandidaten oben – stärkster Kauf-Sog]
+    """.trimIndent()
+
     fun bookIdea(genre: String, language: String, avoid: List<String> = emptyList()): String {
         val avoidBlock = if (avoid.isEmpty()) "" else
             "\nVERMEIDE Wiederholungen – diese Titel/Ideen gab es in dieser Produktion schon, liefere etwas DEUTLICH anderes (Setting, Hook, Figuren): ${avoid.joinToString(" | ")}\n"

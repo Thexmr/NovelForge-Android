@@ -237,7 +237,27 @@ class NovelGenerator(config: AiConfig) {
         )
         parseKdp(kdpText, project)
 
-        // Platzhalter-Buchtitel (z. B. „Titel") durch den echten KDP-Verkaufstitel ersetzen.
+        // VIRALER VERKAUFSTITEL: 10 Kandidaten (grounded in der Story) generieren und den
+        // stärksten Kauf-Titel wählen – klare, neugierig machende Titel statt schwacher/kryptischer.
+        onProgress(GenProgress("Viralen Titel wählen …", 0.95f))
+        val viralResp = try {
+            ai.chat(
+                system = "Du bist Profi für virale Buchtitel im deutschsprachigen Amazon-KDP-Markt. Antworte nur im geforderten Format.",
+                prompt = PromptFactory.viralTitles(
+                    project.genre,
+                    project.profile.synopsis.ifBlank { project.profile.premise },
+                    project.language
+                ),
+                temperature = 0.85, maxTokens = 600
+            )
+        } catch (e: Exception) { "" }
+        val viral = chooseViralTitle(viralResp, project.genre)
+        if (isUsableTitle(viral, project.genre)) {
+            project.profile.kdpTitle = viral
+            if (isWeakTitle(project.title, project.genre)) project.title = viral
+        }
+
+        // Falls noch ein Platzhalter steht, den Verkaufstitel übernehmen.
         val lowerTitle = project.title.trim().lowercase()
         if (project.profile.kdpTitle.isNotBlank() &&
             (lowerTitle == "titel" || lowerTitle == "neues buch" || lowerTitle.isBlank() ||
@@ -318,6 +338,45 @@ class NovelGenerator(config: AiConfig) {
             )
         }
         return result
+    }
+
+    // ---- Virale Titel-Auswahl ------------------------------------------------
+
+    /** Wählt aus der Titel-Antwort (KANDIDATEN + BESTER) den stärksten brauchbaren Titel. */
+    private fun chooseViralTitle(response: String, genre: String): String {
+        var best = ""
+        val candidates = ArrayList<String>()
+        for (raw in response.split("\n")) {
+            val line = raw.trim()
+            if (line.lowercase().startsWith("bester")) {
+                val colon = line.indexOf(':')
+                if (colon >= 0) best = cleanTitle(line.substring(colon + 1))
+            } else if (Regex("^\\d+[).\\-:]").containsMatchIn(line)) {
+                val t = cleanTitle(line.replaceFirst(Regex("^\\d+[).\\-:]\\s*"), ""))
+                if (t.isNotEmpty()) candidates.add(t)
+            }
+        }
+        if (isUsableTitle(best, genre)) return best
+        return candidates.firstOrNull { isUsableTitle(it, genre) } ?: best
+    }
+
+    private fun cleanTitle(s: String): String =
+        s.trim().trim(' ', '\t', '"', '\'', '„', '“', '”', '»', '«', '*', '-', '–', '—', '_', '.')
+
+    private fun isUsableTitle(title: String, genre: String): Boolean {
+        val t = title.trim()
+        val words = t.split(Regex("\\s+")).count { it.isNotBlank() }
+        return t.length >= 4 && words <= 7 && !isWeakTitle(t, genre)
+    }
+
+    private fun isWeakTitle(title: String, genre: String): Boolean {
+        val low = title.trim().lowercase()
+        if (low == "titel" || low == "neues buch" || low == "unbenannt" || Regex("^kapitel\\s+\\d+$").matches(low)) return true
+        val labels = listOf(
+            "liebesroman", "erotik-roman", "erotikroman", "erotik", "thriller", "krimi",
+            "roman", "dark romance", "romance", "fantasy", "new adult", "romantasy"
+        )
+        return low in labels || low == genre.trim().lowercase()
     }
 
     private fun parseKdp(text: String, project: Project) {
