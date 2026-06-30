@@ -1,6 +1,7 @@
 package com.novelforge.android.ai
 
 import com.novelforge.android.domain.ContentSafetyFilter
+import com.novelforge.android.domain.CopyrightFilter
 import com.novelforge.android.domain.SpiceLevel
 
 /**
@@ -154,7 +155,7 @@ object PromptFactory {
         Sprache: $language
         Stilprofil: $style
         Zielumfang: ca. $pageCount Seiten
-        $tropeBlock${block(bookSignature)}${sequelBlock(sequelContext)}${genreDirectiveBlock(genreBrief)}
+        $tropeBlock${block(bookSignature)}${sequelBlock(sequelContext)}${genreDirectiveBlock(genreBrief)}${block(CopyrightFilter.promptDirective)}
         VERBINDLICH: Entwickle das Konzept so, dass es exakt zum Titel "$title" und zum Genre "$genre" passt und den Titel erzählerisch einlöst. Diese Bindung gilt fürs GANZE Buch: jede Hauptfigur, der Hauptkonflikt und jede Szene erfüllen das Genre "$genre" und lösen das Titel-Versprechen ein – der fertige Roman liefert genau das, was Titel und Genre versprechen.
         BESTSELLER-KERN: zugespitzte High-Concept-Prämisse (in EINEM Satz fassbar, kein generisches "Frau kehrt heim und findet Geheimnisse"); eine AKTIVE Hauptfigur, die die Handlung durch eigene Entscheidungen treibt; ein scharfer, präsenter Gegenpart mit echter Chemie/Reibung; das Genre wird in Szenen wirklich GELIEFERT (bei (Dark) Romance/Slow Burn: spürbar eskalierende Anziehung mit Auszahlung, kein "No Burn").
 
@@ -201,7 +202,7 @@ object PromptFactory {
 
     fun characters(title: String, genre: String, plot: String): String = """
         Entwickle das Figurenensemble für den Roman "$title" (Genre: $genre).
-
+        ${block(CopyrightFilter.promptDirective)}
         Plot:
         ${plot.take(4000)}
 

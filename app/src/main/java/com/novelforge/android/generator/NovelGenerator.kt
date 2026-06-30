@@ -7,6 +7,7 @@ import com.novelforge.android.domain.Chapter
 import com.novelforge.android.domain.Character
 import com.novelforge.android.domain.ContentQuality
 import com.novelforge.android.domain.ContentSafetyFilter
+import com.novelforge.android.domain.CopyrightFilter
 import com.novelforge.android.domain.NarrativeSignature
 import com.novelforge.android.domain.Project
 import com.novelforge.android.domain.ProjectStatus
@@ -372,6 +373,7 @@ class NovelGenerator(config: AiConfig) {
     private fun isWeakTitle(title: String, genre: String): Boolean {
         val low = title.trim().lowercase()
         if (low == "titel" || low == "neues buch" || low == "unbenannt" || Regex("^kapitel\\s+\\d+$").matches(low)) return true
+        if (CopyrightFilter.isInfringingTitle(title)) return true // kein geschützter Werk-/Reihentitel
         val labels = listOf(
             "liebesroman", "erotik-roman", "erotikroman", "erotik", "thriller", "krimi",
             "roman", "dark romance", "romance", "fantasy", "new adult", "romantasy"
