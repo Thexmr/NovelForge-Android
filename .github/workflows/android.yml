@@ -7,9 +7,13 @@ on:
 
 jobs:
   build:
-    name: assembleDebug
+    name: assembleRelease + tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
+      RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+      RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
     steps:
       - uses: actions/checkout@v4
       - name: Set up JDK 17
@@ -19,9 +23,32 @@ jobs:
           java-version: "17"
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+
+      - name: Keystore aus Secret schreiben
+        if: env.RELEASE_KEYSTORE_B64 != ''
+        run: echo "$RELEASE_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+
+      - name: Release-APK bauen (signiert, direkt installierbar)
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+        env:
+          RELEASE_STORE_FILE: ${{ runner.temp }}/release.keystore
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+
+      - name: Upload Release-APK
+        if: success()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: novelforge-release-apk
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 30
+
+      # Debug-APK zusaetzlich (fuer Entwicklung/Fallback).
       - name: Build Debug APK
         run: ./gradlew assembleDebug --no-daemon --stacktrace
-      - name: Upload APK
+      - name: Upload Debug-APK
         if: success()
         continue-on-error: true
         uses: actions/upload-artifact@v4
@@ -29,7 +56,8 @@ jobs:
           name: novelforge-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 7
-      # Unit-Tests laufen NACH dem APK-Upload: die App wird immer gebaut/geliefert,
+
+      # Unit-Tests laufen zuletzt: die APKs werden immer gebaut/geliefert,
       # eine fehlgeschlagene Assertion meldet sich trotzdem als roter Lauf.
       - name: Unit-Tests
         run: ./gradlew testDebugUnitTest --no-daemon --stacktrace

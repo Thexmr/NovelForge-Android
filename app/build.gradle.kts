@@ -12,9 +12,22 @@ android {
         applicationId = "com.novelforge.android"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "1.0"
         vectorDrawables { useSupportLibrary = true }
+    }
+
+    signingConfigs {
+        create("release") {
+            // Wird in der CI aus den Repo-Secrets befuellt (Keystore nie im Repo).
+            val ksPath = System.getenv("RELEASE_STORE_FILE")
+            if (ksPath != null && file(ksPath).exists()) {
+                storeFile = file(ksPath)
+                storePassword = System.getenv("RELEASE_STORE_PASSWORD")
+                keyAlias = System.getenv("RELEASE_KEY_ALIAS")
+                keyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -24,6 +37,13 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Mit Secret -> stabile Release-Signatur (upgrade-faehig, direkt installierbar).
+            // Ohne Secret -> Debug-Signatur als Fallback, damit der Build nie unsigniert/kaputt ist.
+            val ksPath = System.getenv("RELEASE_STORE_FILE")
+            signingConfig = if (ksPath != null && file(ksPath).exists())
+                signingConfigs.getByName("release")
+            else
+                signingConfigs.getByName("debug")
         }
     }
 
