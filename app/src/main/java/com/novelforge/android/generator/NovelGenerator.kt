@@ -151,10 +151,14 @@ class NovelGenerator(config: AiConfig) {
         }
 
         // 4) Kapitel schreiben
-        val wordsPerChapter = project.targetPageCount * 250 / project.chapters.size
+        // maxOf(1, …) verhindert eine ArithmeticException (Division durch 0), falls die
+        // Kapitelplanung 0 Kapitel lieferte (Parser-Aussetzer) – sonst stürzt die ganze
+        // Generierung ab, statt sauber weiterzulaufen.
+        val chapterCount = maxOf(1, project.chapters.size)
+        val wordsPerChapter = project.targetPageCount * 250 / chapterCount
         var storySoFar = ""
         project.chapters.forEachIndexed { index, ch ->
-            onProgress(GenProgress("Kapitel ${ch.number} schreiben …", 0.30f + 0.6f * index / project.chapters.size))
+            onProgress(GenProgress("Kapitel ${ch.number} schreiben …", 0.30f + 0.6f * index / chapterCount))
             val draftPrompt = PromptFactory.draftChapter(
                 project.language, project.styleProfile, project.genre, project.title,
                 ch.number, ch.title, ch.goal, ch.conflict,

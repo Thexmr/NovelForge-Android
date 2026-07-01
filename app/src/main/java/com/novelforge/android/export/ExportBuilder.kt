@@ -67,14 +67,18 @@ object ExportBuilder {
             manifest.append("    <item id=\"css\" href=\"style.css\" media-type=\"text/css\"/>\n")
             manifest.append("    <item id=\"cover\" href=\"cover.xhtml\" media-type=\"application/xhtml+xml\"/>\n")
             spine.append("    <itemref idref=\"cover\"/>\n")
-            chapters.forEach { ch ->
-                manifest.append("    <item id=\"c${ch.number}\" href=\"c${ch.number}.xhtml\" media-type=\"application/xhtml+xml\"/>\n")
-                spine.append("    <itemref idref=\"c${ch.number}\"/>\n")
+            // ID/Dateiname aus der Position (index+1) ableiten, NICHT aus ch.number.
+            // ch.number ist nicht garantiert eindeutig -> doppelte Nummern erzeugten sonst
+            // eine ZipException (doppelter Entry-Name) und doppelte Manifest-/Spine-IDs.
+            chapters.forEachIndexed { i, _ ->
+                val cid = "c${i + 1}"
+                manifest.append("    <item id=\"$cid\" href=\"$cid.xhtml\" media-type=\"application/xhtml+xml\"/>\n")
+                spine.append("    <itemref idref=\"$cid\"/>\n")
             }
             add("OEBPS/content.opf", opf(project, manifest.toString(), spine.toString()))
             add("OEBPS/nav.xhtml", nav(chapters))
-            chapters.forEach { ch ->
-                add("OEBPS/c${ch.number}.xhtml", chapterXhtml(ch.number, ch.title, ch.text.ifBlank { ch.goal }))
+            chapters.forEachIndexed { i, ch ->
+                add("OEBPS/c${i + 1}.xhtml", chapterXhtml(ch.number, ch.title, ch.text.ifBlank { ch.goal }))
             }
         }
         return bos.toByteArray()
@@ -209,9 +213,10 @@ $spine  </spine>
 </package>"""
 
     private fun nav(chapters: List<Chapter>): String {
-        val items = chapters.joinToString("\n") {
-            "      <li><a href=\"c${it.number}.xhtml\">${escapeXml("Kapitel ${it.number}: ${it.title}")}</a></li>"
-        }
+        // href aus der Position (index+1) – muss exakt zur Vergabe in epubBytes passen.
+        val items = chapters.mapIndexed { i, ch ->
+            "      <li><a href=\"c${i + 1}.xhtml\">${escapeXml("Kapitel ${ch.number}: ${ch.title}")}</a></li>"
+        }.joinToString("\n")
         return """<?xml version="1.0" encoding="UTF-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
 <head><title>Inhalt</title></head>
