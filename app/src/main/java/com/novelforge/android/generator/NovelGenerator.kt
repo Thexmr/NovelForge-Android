@@ -197,7 +197,14 @@ class NovelGenerator(config: AiConfig) {
             ch.text = if (ContentSafetyFilter.isSafe(text)) text
                 else "[Kapitel ${ch.number} vom Schutzfilter blockiert – an intimen Szenen dürfen ausschließlich erwachsene (18+) Figuren beteiligt sein. Bitte neu erzeugen.]"
             ch.wordCount = wordCount(ch.text)
-            storySoFar = (storySoFar + "\n\n" + ch.text).takeLast(6000)
+            // takeLast schneidet hart bei 6000 Zeichen ab – der Kontext begänne sonst mitten
+            // im Wort/Satz. Auf die nächste Satz-/Absatzgrenze ausrichten, damit die
+            // Fortsetzungs-Vorlage sauber startet (bessere Kontinuität, kein Token-Fragment).
+            val tail = (storySoFar + "\n\n" + ch.text).takeLast(6000)
+            val boundary = tail.withIndex()
+                .firstOrNull { (i, c) -> i in 0..600 && (c == '\n' || c == '.' || c == '!' || c == '?') }
+                ?.index ?: -1
+            storySoFar = (if (boundary >= 0) tail.substring(boundary + 1) else tail).trimStart()
         }
 
         // 4b) „Blick ins Buch": Eröffnung des ersten Kapitels auf Sog optimieren.
