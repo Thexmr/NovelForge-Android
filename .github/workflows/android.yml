@@ -29,3 +29,7 @@ jobs:
           name: novelforge-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 7
+      # Unit-Tests laufen NACH dem APK-Upload: die App wird immer gebaut/geliefert,
+      # eine fehlgeschlagene Assertion meldet sich trotzdem als roter Lauf.
+      - name: Unit-Tests
+        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace

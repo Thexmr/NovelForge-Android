@@ -56,8 +56,17 @@ object ExportBuilder {
 
             add("META-INF/container.xml", CONTAINER)
 
+            // Typografische Cover-Seite (Titel/Autor). Ein echtes Raster-Cover gibt es auf
+            // Android (noch) nicht – aber ein Buch ohne jede Titelseite wirkt unfertig, daher
+            // mindestens eine gestylte XHTML-Titelseite als erstes Spine-Element + CSS.
+            add("OEBPS/style.css", COVER_CSS)
+            add("OEBPS/cover.xhtml", coverXhtml(project))
+
             val manifest = StringBuilder()
             val spine = StringBuilder()
+            manifest.append("    <item id=\"css\" href=\"style.css\" media-type=\"text/css\"/>\n")
+            manifest.append("    <item id=\"cover\" href=\"cover.xhtml\" media-type=\"application/xhtml+xml\"/>\n")
+            spine.append("    <itemref idref=\"cover\"/>\n")
             chapters.forEach { ch ->
                 manifest.append("    <item id=\"c${ch.number}\" href=\"c${ch.number}.xhtml\" media-type=\"application/xhtml+xml\"/>\n")
                 spine.append("    <itemref idref=\"c${ch.number}\"/>\n")
@@ -70,6 +79,35 @@ object ExportBuilder {
         }
         return bos.toByteArray()
     }
+
+    /** BCP-47-Sprachcode aus der Projekt-Sprache (für gültige EPUB-Metadaten). */
+    private fun languageCode(language: String): String = when (language.trim().lowercase()) {
+        "englisch", "english", "en" -> "en"
+        "französisch", "franzoesisch", "french", "fr" -> "fr"
+        "spanisch", "spanish", "es" -> "es"
+        "italienisch", "italian", "it" -> "it"
+        else -> "de"
+    }
+
+    private const val COVER_CSS = """
+body.cover { margin: 0; padding: 0; text-align: center; }
+.cover-inner { padding: 18% 10% 0 10%; }
+.cover-title { font-size: 2em; font-weight: bold; line-height: 1.2; margin-bottom: 0.6em; }
+.cover-rule { width: 40%; margin: 1.2em auto; border: 0; border-top: 2px solid #888; }
+.cover-author { font-size: 1.2em; font-style: italic; }
+"""
+
+    private fun coverXhtml(project: Project): String = """<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>${escapeXml(project.title)}</title><link rel="stylesheet" type="text/css" href="style.css"/></head>
+<body class="cover">
+  <div class="cover-inner">
+    <div class="cover-title">${escapeXml(project.title)}</div>
+    <hr class="cover-rule"/>
+    <div class="cover-author">${escapeXml(project.authorName)}</div>
+  </div>
+</body>
+</html>"""
 
     /** PDF über das Android-Framework (PdfDocument + StaticLayout, mehrseitig, A4). */
     fun pdfBytes(project: Project): ByteArray {
@@ -161,7 +199,7 @@ object ExportBuilder {
     <dc:identifier id="bookid">urn:uuid:${project.id}</dc:identifier>
     <dc:title>${escapeXml(project.title)}</dc:title>
     <dc:creator>${escapeXml(project.authorName)}</dc:creator>
-    <dc:language>de</dc:language>
+    <dc:language>${languageCode(project.language)}</dc:language>
   </metadata>
   <manifest>
     <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>

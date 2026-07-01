@@ -10,6 +10,7 @@ import com.novelforge.android.domain.ProjectStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -62,6 +63,7 @@ object ProjectRepository {
     private val fileLock = Any()
     private var file: File? = null
     @Volatile private var lastPersist = 0L
+    @Volatile private var retryScheduled = false
 
     /** Einmalig beim App-Start: lädt den Bestand im Hintergrund (kein ANR). */
     fun init(context: Context) {
@@ -105,29 +107,72 @@ object ProjectRepository {
     fun touch() = emit(force = false)
 
     private fun emit(force: Boolean) {
-        val snap = synchronized(live) { live.map { snapshot(it) } }
+        var degraded = false
+        val snap = synchronized(live) {
+            live.map { p ->
+                val (proj, wasDegraded) = snapshot(p)
+                if (wasDegraded) degraded = true
+                proj
+            }
+        }
+        if (degraded) {
+            // Mindestens eine Liste ließ sich wegen anhaltender Generator-Kontention NICHT
+            // sauber kopieren. FRÜHER wurde dafür eine LEERE Liste eingesetzt und dieser
+            // verstümmelte Schnappschuss emittiert UND auf Platte geschrieben → echter
+            // Datenverlust (Buch mit 0 Kapiteln in UI und projects.json). Jetzt: diesen
+            // emit verwerfen und kurz darauf erneut versuchen, wenn die Struktur-Änderung
+            // durch ist. Der bisherige _projects.value bleibt unverändert stehen.
+            scheduleRetryEmit()
+            return
+        }
         _projects.value = snap
         persist(snap, force)
     }
 
-    /** Tiefkopie (entkoppelt von der live-mutierten Instanz), damit der Flow wirklich emittiert. */
-    private fun snapshot(p: Project): Project = p.copy(
-        profile = p.profile.copy(),
-        chapters = safeCopy(p.chapters) { it.copy() },
-        characters = safeCopy(p.characters) { it.copy() },
-    )
+    /** Kurz warten und erneut emittieren, sobald die kollidierende Struktur-Änderung durch ist. */
+    private fun scheduleRetryEmit() {
+        if (retryScheduled) return
+        retryScheduled = true
+        ioScope.launch {
+            delay(50)
+            retryScheduled = false
+            emit(force = true)
+        }
+    }
+
+    /**
+     * Tiefkopie (entkoppelt von der live-mutierten Instanz), damit der Flow wirklich emittiert.
+     * Liefert zusätzlich zurück, ob eine der Listen NICHT sauber kopiert werden konnte (degraded).
+     */
+    private fun snapshot(p: Project): Pair<Project, Boolean> {
+        val chapters = safeCopy(p.chapters) { it.copy() }
+        val characters = safeCopy(p.characters) { it.copy() }
+        val degraded = chapters == null || characters == null
+        return p.copy(
+            profile = p.profile.copy(),
+            chapters = chapters ?: mutableListOf(),
+            characters = characters ?: mutableListOf(),
+        ) to degraded
+    }
 
     /**
      * Kopiert eine Liste auch dann ohne Absturz, wenn der Generator-Thread sie gerade strukturell
-     * ändert (clear()/addAll()). Bei Kollision kurz erneut versuchen; nie die Live-Instanz durchreichen.
+     * ändert (clear()/addAll()). Zuerst ein schneller Struktur-Snapshot (ArrayList) – das verkleinert
+     * das Kollisionsfenster gegenüber map{} mit Lambda pro Element – dann kopieren. Bei anhaltender
+     * Kollision `null` (NICHT leere Liste!), damit der Aufrufer den verstümmelten Schnappschuss
+     * verwerfen statt persistieren kann. Eine echt leere Quelle liefert normal eine leere Liste.
      */
-    private fun <T> safeCopy(src: List<T>, copy: (T) -> T): MutableList<T> {
-        repeat(5) {
-            try { return src.map(copy).toMutableList() }
+    private fun <T> safeCopy(src: List<T>, copy: (T) -> T): MutableList<T>? {
+        repeat(6) {
+            try {
+                val stable = ArrayList(src)
+                return stable.map(copy).toMutableList()
+            }
             catch (e: ConcurrentModificationException) { /* erneut versuchen */ }
             catch (e: IndexOutOfBoundsException) { /* gleiche Ursache, erneut versuchen */ }
+            catch (e: NullPointerException) { /* Element wurde während der Kopie entfernt */ }
         }
-        return mutableListOf() // Notnagel: der nächste emit() liefert die korrekte Kopie
+        return null
     }
 
     private fun persist(snapshot: List<Project>, force: Boolean) {
