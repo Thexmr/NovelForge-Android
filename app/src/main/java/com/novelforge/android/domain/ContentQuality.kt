@@ -238,12 +238,36 @@ object ContentQuality {
         return jargonTellPhrases.filter { lower.contains(it) }
     }
 
-    /** Klingt der Text maschinell ODER altertümlich (für seine Länge)? */
+    /**
+     * Umschreibungs-Marker: Benennungs-Vermeidung, Korrekturfiguren, Ins-Ungefähre-Vergleiche.
+     * Einzeln legitim – GEHÄUFT machen sie die Geschichte unverständlich.
+     */
+    private val circumlocutionMarkers = listOf(
+        "das, was", "etwas, das", "etwas, dass", "so etwas wie", "eine art ",
+        ", sondern", "als ob es", "wie etwas, das", "nicht benennen", "kein wort dafür",
+        "etwas härterem als", "etwas anderem als", "aus etwas, das"
+    )
+
+    /** Zählt Umschreibungs-Marker (Gesamtvorkommen). */
+    fun circumlocutionCount(text: String): Int {
+        val lower = text.lowercase()
+        if (lower.isEmpty()) return 0
+        var count = 0
+        for (p in circumlocutionMarkers) {
+            var idx = lower.indexOf(p)
+            while (idx >= 0) { count++; idx = lower.indexOf(p, idx + p.length) }
+        }
+        return count
+    }
+
+    /** Klingt der Text maschinell, altertümlich oder umschreibungs-kryptisch (für seine Länge)? */
     fun soundsLikeAI(text: String): Boolean {
         val words = wordCount(text)
         if (words < 150) return false
         val lower = text.lowercase()
         if (countOccurrences(archaicTellPhrases, lower) >= 2) return true
+        // Gehäufte Umschreibungen machen die Geschichte unverständlich (dichteabhängig).
+        if (circumlocutionCount(text) >= maxOf(4, words / 220)) return true
         return countOccurrences(aiTellPhrases, lower) >= maxOf(2, words / 300)
     }
 }

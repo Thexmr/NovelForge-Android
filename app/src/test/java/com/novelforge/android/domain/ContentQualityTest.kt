@@ -72,6 +72,16 @@ class ContentQualityTest {
     }
 
     @Test
+    fun circumlocutionDensityTriggersRewrite() {
+        val filler = "Sie ging weiter durch die Stadt und sah sich die Fenster an. ".repeat(15)
+        val crypto = "Es war das, was sie nie sagten. Kein Umzug, sondern eine Auslöschung. " +
+            "Es blieb so etwas wie Wärme, etwas, das sie nicht benennen konnte."
+        assertTrue(ContentQuality.circumlocutionCount(crypto) >= 4)
+        assertTrue(ContentQuality.soundsLikeAI(filler + crypto))
+        assertFalse(ContentQuality.soundsLikeAI(filler))
+    }
+
+    @Test
     fun weakChapterEndingIsDetected() {
         val filler = "Sie ging weiter durch die Stadt und sah sich die Fenster an. ".repeat(15)
         val weak = filler + "Der Abend legte sich ruhig über die Dächer der kleinen Stadt und alles wurde still und friedlich an diesem langen Tag."
