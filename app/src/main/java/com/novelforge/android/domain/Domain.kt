@@ -23,6 +23,8 @@ data class Character(
     var goal: String = "",
     var fear: String = "",
     var weakness: String = "",
+    var speech: String = "",      // unverwechselbare Dialogstimme
+    var appearance: String = "",  // kanonische äußere Merkmale
 )
 
 data class BookProfile(

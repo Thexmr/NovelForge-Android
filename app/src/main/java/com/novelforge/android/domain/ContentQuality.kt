@@ -248,6 +248,22 @@ object ContentQuality {
         "etwas härterem als", "etwas anderem als", "aus etwas, das"
     )
 
+    /** Romance-artige Genres, deren Kernversprechen eine ESKALIERENDE Beziehung ist. */
+    fun isRomanceGenre(genre: String): Boolean {
+        val g = genre.lowercase()
+        return listOf("romance", "liebe", "romantasy", "erotik", "new adult").any { g.contains(it) }
+    }
+
+    /**
+     * Zielwert der Beziehungstemperatur (2–10) für ein Kapitel: steigt linear über das Buch.
+     * Gibt dem „Slow Burn" eine messbare Leiter – gegen das „No Burn"-Problem.
+     */
+    fun romanceHeatTarget(chapterIndex: Int, chapterCount: Int): Int {
+        if (chapterCount <= 1) return 6
+        val fraction = chapterIndex.toDouble() / (chapterCount - 1)
+        return (2 + Math.round(fraction * 8.0).toInt()).coerceIn(2, 10)
+    }
+
     /** Zählt Umschreibungs-Marker (Gesamtvorkommen). */
     fun circumlocutionCount(text: String): Int {
         val lower = text.lowercase()

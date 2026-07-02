@@ -72,6 +72,16 @@ class ContentQualityTest {
     }
 
     @Test
+    fun romanceHeatLadderEscalates() {
+        assertEquals(2, ContentQuality.romanceHeatTarget(0, 40))
+        assertEquals(10, ContentQuality.romanceHeatTarget(39, 40))
+        assertTrue(ContentQuality.romanceHeatTarget(20, 40) in 5..8)
+        assertTrue(ContentQuality.isRomanceGenre("Dark Romance"))
+        assertTrue(ContentQuality.isRomanceGenre("Liebesroman"))
+        assertFalse(ContentQuality.isRomanceGenre("Psychothriller"))
+    }
+
+    @Test
     fun circumlocutionDensityTriggersRewrite() {
         val filler = "Sie ging weiter durch die Stadt und sah sich die Fenster an. ".repeat(15)
         val crypto = "Es war das, was sie nie sagten. Kein Umzug, sondern eine Auslöschung. " +

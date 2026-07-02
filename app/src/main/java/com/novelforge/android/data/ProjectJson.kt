@@ -71,6 +71,7 @@ object ProjectJson {
         .put("name", c.name).put("role", c.role).put("age", c.age)
         .put("occupation", c.occupation).put("goal", c.goal).put("fear", c.fear)
         .put("weakness", c.weakness)
+        .put("speech", c.speech).put("appearance", c.appearance)
 
     private fun decode(o: JSONObject): Project {
         val chapters = ArrayList<Chapter>()
@@ -143,5 +144,7 @@ object ProjectJson {
         goal = o.optString("goal"),
         fear = o.optString("fear"),
         weakness = o.optString("weakness"),
+        speech = o.optString("speech"),
+        appearance = o.optString("appearance"),
     )
 }

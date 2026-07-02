@@ -210,7 +210,11 @@ object PromptFactory {
         Regeln: JEDES Kapitel endet mit einem Haken (offene Frage, Bedrohung, Enthüllung). Variiere das Tempo. Kapiteltitel kreativ und doppelbödig, KEINE "Kapitel N"/Phasennamen.
 
         Gib für JEDES Kapitel GENAU eine Zeile aus (Felder mit | getrennt):
-        KAPITEL|Nummer|Titel|Ziel des Kapitels|Zentraler Konflikt
+        KAPITEL|Nummer|Titel|Ziel des Kapitels|Zentraler Konflikt|Emotionaler Schritt
+
+        Emotionaler Schritt = wie sich der innere Zustand bzw. die Beziehung der Hauptfigur in
+        DIESEM Kapitel verändert (z. B. "Misstrauen kippt in erstes Vertrauen") – der Gefühlsbogen
+        entwickelt sich über das Buch stetig, nie zwei Kapitel mit demselben Stand.
     """.trimIndent()
 
     fun characters(title: String, genre: String, plot: String): String = """
@@ -222,7 +226,11 @@ object PromptFactory {
         Erstelle Protagonist, Antagonist und 3-5 wichtige Nebenfiguren. Alle an romantischen oder
         intimen Handlungen beteiligten Figuren sind eindeutig erwachsen (mindestens 18 Jahre).
         Gib für JEDE Figur GENAU eine Zeile aus (Felder mit | getrennt):
-        FIGUR|Name|Rolle|Alter|Beruf|Ziel|Angst|Schwäche
+        FIGUR|Name|Rolle|Alter|Beruf|Ziel|Angst|Schwäche|Sprechweise|Markantes Äußeres
+
+        Sprechweise = 1 kurzer Marker, der die Figur im Dialog UNVERWECHSELBAR macht
+        (Satzlänge, Lieblingsausdruck, was sie nie sagen würde) – jede Figur klingt anders.
+        Markantes Äußeres = 2-3 unveränderliche Merkmale (bleiben das ganze Buch kanonisch).
     """.trimIndent()
 
     fun draftChapter(
@@ -241,9 +249,18 @@ object PromptFactory {
             else -> ""
         }
         // Buchposition: gibt dem Kapitel seinen Platz im Spannungsbogen (gegen flache Mitte).
-        val positionLine = if (totalChapters > 1)
+        var positionLine = if (totalChapters > 1)
             "\nPOSITION IM BUCH: Kapitel $chapterNumber von $totalChapters – Spannung und emotionale Einsätze steigen gegenüber früheren Kapiteln spürbar an."
         else ""
+        // Amazon-Leseprobe = die ersten ~10% des Buches: Hier entscheidet sich der Kauf.
+        if (totalChapters > 1 && chapterNumber <= maxOf(1, totalChapters / 10)) {
+            positionLine += "\nLESEPROBE-BEREICH: Dieses Kapitel liegt in der Amazon-Leseprobe (Blick ins Buch) – maximaler Sog, keine Längen, keine Rückblenden, kein Welt-Erklären."
+        }
+        // Romance-Kernversprechen: die Beziehung eskaliert MESSBAR über das Buch (gegen „No Burn").
+        if (totalChapters > 1 && com.novelforge.android.domain.ContentQuality.isRomanceGenre(genre)) {
+            val heat = com.novelforge.android.domain.ContentQuality.romanceHeatTarget(chapterNumber - 1, totalChapters)
+            positionLine += "\nBEZIEHUNGSTEMPERATUR: In diesem Kapitel ca. Stufe $heat/10 (Nähe/Anziehung/Spannung zwischen den Hauptfiguren) – spürbar mehr als in früheren Kapiteln; die Anziehung ist in JEDER gemeinsamen Szene präsent, nie kühl."
+        }
         // Deterministische Einstiegs-Rotation: verhindert strukturell gleichförmige
         // Kapitelanfänge („Beginne mitten in der Handlung" erzeugte sonst 40x dasselbe Muster).
         val openerStyles = listOf(

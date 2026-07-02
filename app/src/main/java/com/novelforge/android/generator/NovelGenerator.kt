@@ -145,8 +145,13 @@ class NovelGenerator(config: AiConfig) {
             buildString {
                 append(c.name)
                 if (c.role.isNotBlank()) append(" (${c.role})")
+                if (c.age.isNotBlank()) append(", ${c.age}")
+                if (c.occupation.isNotBlank()) append(", ${c.occupation}")
                 if (c.goal.isNotBlank()) append(" – Ziel: ${c.goal}")
+                if (c.fear.isNotBlank()) append("; Angst: ${c.fear}")
                 if (c.weakness.isNotBlank()) append("; Schwäche: ${c.weakness}")
+                if (c.speech.isNotBlank()) append("; Sprechweise: ${c.speech}")
+                if (c.appearance.isNotBlank()) append("; Merkmale: ${c.appearance}")
             }
         }
 
@@ -400,11 +405,16 @@ class NovelGenerator(config: AiConfig) {
             val parts = line.substringAfter("KAPITEL|").split("|").map { it.trim() }
             if (parts.size < 3) continue
             val number = parts[0].filter { it.isDigit() }.toIntOrNull() ?: (result.size + 1)
+            // Emotionaler Schritt (5. Feld) wird ins Ziel gefaltet – so fließt der geplante
+            // Gefühlsbogen ohne Schema-Änderung automatisch in den Kapitel-Prompt.
+            var goal = parts.getOrElse(2) { "" }
+            val emotion = parts.getOrElse(4) { "" }
+            if (emotion.isNotBlank()) goal = if (goal.isBlank()) emotion else "$goal – Emotionaler Schritt: $emotion"
             result.add(
                 Chapter(
                     number = number,
                     title = parts[1].ifBlank { "Kapitel $number" },
-                    goal = parts.getOrElse(2) { "" },
+                    goal = goal,
                     conflict = parts.getOrElse(3) { "" },
                 )
             )
@@ -428,6 +438,8 @@ class NovelGenerator(config: AiConfig) {
                     goal = parts.getOrElse(4) { "" },
                     fear = parts.getOrElse(5) { "" },
                     weakness = parts.getOrElse(6) { "" },
+                    speech = parts.getOrElse(7) { "" },
+                    appearance = parts.getOrElse(8) { "" },
                 )
             )
         }
