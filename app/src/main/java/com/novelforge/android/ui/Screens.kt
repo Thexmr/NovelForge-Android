@@ -586,12 +586,19 @@ fun ProjectScreen(
     // Export-Bytes (ganzes Buch) im Hintergrund schreiben → kein ANR; Rückmeldung per Toast.
     fun export(uri: Uri?, label: String, bytes: () -> ByteArray) {
         if (uri == null) return
+        // Export-Sperre: Gliederungen/Platzhalter werden nie als „Buch" exportiert (KDP-Schutz).
+        ExportBuilder.exportBlocker(project)?.let { reason ->
+            Toast.makeText(context, reason, Toast.LENGTH_LONG).show()
+            return
+        }
         scope.launch(Dispatchers.IO) {
-            val ok = runCatching {
+            val failure = runCatching {
                 context.contentResolver.openOutputStream(uri)?.use { it.write(bytes()) } ?: error("kein Stream")
-            }.isSuccess
+            }.exceptionOrNull()
             withContext(Dispatchers.Main) {
-                Toast.makeText(context, if (ok) "$label gespeichert" else "$label fehlgeschlagen", Toast.LENGTH_SHORT).show()
+                val msg = if (failure == null) "$label gespeichert"
+                    else "$label fehlgeschlagen: ${failure.message ?: "unbekannter Fehler"}"
+                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
             }
         }
     }

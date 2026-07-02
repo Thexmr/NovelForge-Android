@@ -10,6 +10,23 @@ import java.util.zip.ZipOutputStream
 /** Baut die Export-Artefakte für ein Projekt: Manuskript-Text, KDP-Blatt und EPUB 3. */
 object ExportBuilder {
 
+    /**
+     * Export-Sperre: null = exportierbar, sonst eine klare Begründung. Verhindert, dass
+     * eine Gliederung (leere Kapitel fallen sonst still auf `goal` zurück) oder
+     * Fehler-Platzhalter als „fertiges Buch" exportiert und zu KDP hochgeladen werden.
+     */
+    fun exportBlocker(project: Project): String? {
+        if (project.chapters.isEmpty()) return "Das Buch hat noch keine Kapitel."
+        val unfinished = project.chapters.filter { it.text.isBlank() || it.text.startsWith("[Kapitel") }
+        if (unfinished.size == project.chapters.size)
+            return "Das Buch enthält noch keinen fertigen Text – nur die Gliederung."
+        if (unfinished.isNotEmpty()) {
+            val nums = unfinished.take(6).joinToString(", ") { it.number.toString() }
+            return "Kapitel ohne fertigen Text: $nums${if (unfinished.size > 6) " …" else ""} – erst neu erzeugen, sonst würde ein unfertiges Buch exportiert."
+        }
+        return null
+    }
+
     fun manuscriptText(project: Project): String {
         val sb = StringBuilder()
         sb.append(project.title).append("\n")

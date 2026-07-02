@@ -159,13 +159,33 @@ class NovelGenerator(config: AiConfig) {
         var storySoFar = ""
         project.chapters.forEachIndexed { index, ch ->
             onProgress(GenProgress("Kapitel ${ch.number} schreiben …", 0.30f + 0.6f * index / chapterCount))
+            // Strukturierter Buchkontext (statt nur eines 6000-Zeichen-Prosa-Tails):
+            // (a) Plan-Zeilen aller GESCHRIEBENEN Kapitel als verbindlicher Verlauf,
+            // (b) die nächsten 2 Kapitelziele (nicht vorwegnehmen, Vorausdeutungen säen),
+            // (c) fürs Finale: Prämisse/Exposé-Ende + Eröffnungsmotiv aus Kapitel 1.
+            val pastOutline = project.chapters.take(index)
+                .joinToString("\n") { "Kapitel ${it.number} (${it.title}): ${it.goal}" }
+            val upcomingOutline = project.chapters.drop(index + 1).take(2)
+                .joinToString("\n") { "Kapitel ${it.number} (${it.title}): ${it.goal}" }
+            val isLastChapter = index == project.chapters.size - 1
+            val finaleMaterial = if (!isLastChapter) "" else buildString {
+                if (project.profile.premise.isNotBlank())
+                    append("ZENTRALE PRÄMISSE (hier einlösen): ${project.profile.premise}\n")
+                if (project.profile.synopsis.isNotBlank())
+                    append("GEPLANTER SCHLUSS LAUT EXPOSÉ: ${project.profile.synopsis.takeLast(600)}\n")
+                val openingMotif = project.chapters.firstOrNull()?.text?.take(300).orEmpty()
+                if (openingMotif.isNotBlank())
+                    append("SO BEGINNT DAS BUCH (EIN Bild/Motiv daraus am Ende aufgreifen): $openingMotif")
+            }
             val draftPrompt = PromptFactory.draftChapter(
                 project.language, project.styleProfile, project.genre, project.title,
                 ch.number, ch.title, ch.goal, ch.conflict,
                 project.profile.narrativePerspective, project.profile.tense,
                 storySoFar, wordsPerChapter,
-                isFirst = index == 0, isLast = index == project.chapters.size - 1,
-                project.styleSignature, project.spiceLevel, charactersSummary, genreBrief = genreBrief
+                isFirst = index == 0, isLast = isLastChapter,
+                project.styleSignature, project.spiceLevel, charactersSummary, genreBrief = genreBrief,
+                pastOutline = pastOutline, upcomingOutline = upcomingOutline,
+                finaleMaterial = finaleMaterial, totalChapters = project.chapters.size
             )
             val minWords = maxOf(120, (wordsPerChapter * 0.6).toInt())
             var best = ""
@@ -194,6 +214,29 @@ class NovelGenerator(config: AiConfig) {
                 ContentQuality.strippingInlineFormatting(
                     ContentQuality.strippingPromptArtifacts(best)))
             text = ContentQuality.stripLeadingTitleEcho(text, ch.title)
+            // Chirurgischer Line-Edit für weiterhin KI-klingende Kapitel: ersetzt GENAU die
+            // erkannten Floskeln/Archaismen statt (teuer und riskant) neu zu schreiben.
+            // Läuft nur für geflaggte Kapitel → begrenzte Zusatzkosten.
+            if (text.length > 400 && ContentQuality.soundsLikeAI(text)) {
+                val offenders = (ContentQuality.aiTellMatches(text) + ContentQuality.archaicMatches(text))
+                    .distinct().take(12)
+                if (offenders.isNotEmpty()) {
+                    val edited = try {
+                        writer.chat(
+                            system = "Du bist ein präziser Lektor. Du ersetzt nur die genannten Formulierungen, sonst nichts.",
+                            prompt = PromptFactory.lineEdit(project.language, text, offenders),
+                            temperature = 0.4, maxTokens = (wordCount(text) * 3).coerceIn(2000, 8000)
+                        ).trim()
+                    } catch (e: Exception) { "" }
+                    val cleanedEdit = ContentQuality.humanizeProse(
+                        ContentQuality.strippingInlineFormatting(
+                            ContentQuality.strippingPromptArtifacts(edited)))
+                    if (wordCount(cleanedEdit) >= (wordCount(text) * 0.85).toInt() &&
+                        !ContentQuality.containsMetaRequest(cleanedEdit) &&
+                        ContentSafetyFilter.isSafe(cleanedEdit)
+                    ) text = cleanedEdit
+                }
+            }
             if (text.isBlank() || ContentQuality.containsMetaRequest(text)) {
                 text = "[Kapitel ${ch.number} konnte nicht erzeugt werden${lastErr?.let { " ($it)" } ?: ""}. Bitte einzeln neu erzeugen.]"
             }
@@ -211,28 +254,41 @@ class NovelGenerator(config: AiConfig) {
             storySoFar = (if (boundary >= 0) tail.substring(boundary + 1) else tail).trimStart()
         }
 
-        // 4b) „Blick ins Buch": Eröffnung des ersten Kapitels auf Sog optimieren.
+        // 4b) „Blick ins Buch": NUR den EINSTIEG des ersten Kapitels neu schreiben und
+        // deterministisch zurücksplicen. Vorher wurde das GANZE Kapitel ersetzt – die zweite
+        // Hälfte ging verloren/wurde neu erfunden und die Naht zu Kapitel 2 (das aus dem
+        // Original-Ende generiert wurde) brach genau in der Amazon-Leseprobe.
         val opener = project.chapters.firstOrNull()
         if (opener != null && opener.text.length > 200 && !opener.text.startsWith("[Kapitel")) {
             onProgress(GenProgress("Eröffnung optimieren …", 0.90f))
+            // Einstieg = die ersten Absätze bis ~1500 Zeichen; der Rest bleibt wörtlich erhalten.
+            val paras = opener.text.split("\n\n")
+            val headParas = mutableListOf<String>()
+            var headLen = 0
+            for (p in paras) {
+                headParas.add(p); headLen += p.length + 2
+                if (headLen >= 1500) break
+            }
+            val head = headParas.joinToString("\n\n")
+            val tail = opener.text.removePrefix(head).trimStart('\n')
             val improved = try {
                 writer.chat(
                     system = "Du bist ein Bestseller-Autor und Spezialist für packende Romananfänge. Gib ausschließlich Prosatext zurück.",
                     prompt = PromptFactory.optimizeOpening(
                         project.title, project.genre,
                         project.profile.narrativePerspective, project.profile.tense,
-                        opener.text, wordsPerChapter
+                        head, tail
                     ),
-                    temperature = 0.85, maxTokens = (wordsPerChapter * 3).coerceIn(2000, 8000)
+                    temperature = 0.85, maxTokens = 3000
                 ).trim()
             } catch (e: Exception) { "" }
             val cleaned = ContentQuality.humanizeProse(
                 ContentQuality.strippingInlineFormatting(
                     ContentQuality.strippingPromptArtifacts(improved)))
-            // Nur übernehmen, wenn brauchbar UND vom Schutzfilter freigegeben.
+            // Nur übernehmen, wenn brauchbar UND vom Schutzfilter freigegeben; Rest splicen.
             if (cleaned.length > 200 && !ContentQuality.containsMetaRequest(cleaned) && ContentSafetyFilter.isSafe(cleaned)) {
-                opener.text = cleaned
-                opener.wordCount = wordCount(cleaned)
+                opener.text = if (tail.isBlank()) cleaned else cleaned + "\n\n" + tail
+                opener.wordCount = wordCount(opener.text)
             }
         }
 

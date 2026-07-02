@@ -99,23 +99,33 @@ object PromptFactory {
         STIL: [3-6 Stichworte zu Farbwelt & Stimmung, deutsch]
     """.trimIndent()
 
+    /**
+     * Überarbeitet NUR den Einstieg des ersten Kapitels (nicht das ganze Kapitel):
+     * Vorher wurde das komplette Kapitel auf Basis der ersten 6000 Zeichen NEU geschrieben –
+     * die zweite Hälfte ging verloren bzw. wurde frei erfunden, und die Naht zu Kapitel 2
+     * (das aus dem ORIGINAL-Ende generiert wurde) brach sichtbar – genau in der Leseprobe.
+     */
     fun optimizeOpening(
         title: String, genre: String, perspective: String, tense: String,
-        currentText: String, targetWords: Int,
+        openingText: String, followText: String,
     ): String = """
-        Überarbeite das ERSTE Kapitel des Romans "$title" (Genre: $genre) so, dass die ersten Sätze
-        die Amazon-Leseprobe ("Blick ins Buch") sofort fesseln und zum Kauf führen.
+        Überarbeite NUR den EINSTIEG des ersten Kapitels des Romans "$title" (Genre: $genre) so,
+        dass die ersten Sätze die Amazon-Leseprobe ("Blick ins Buch") sofort fesseln.
         Erzählperspektive: $perspective. Zeitform: $tense.
 
         REGELN: Starte mitten in einer konkreten Szene/Handlung (kein Wetter-/Rückblick-Vorlauf), erzeuge
         sofort eine Frage oder Spannung im Kopf der Lesenden, zeige statt zu erklären, variiere Satzlängen stark.
-        Inhalt, Figuren und Handlung des Kapitels bleiben erhalten – nur Sog und Anfang werden stärker.
-        Umfang etwa $targetWords Wörter. Reiner deutscher Fließtext, KEINE Markdown-Symbole, keine Meta-Kommentare.
+        Ereignisse, Figuren und Fakten des Einstiegs bleiben erhalten – nur der Sog wird stärker.
+        Etwa derselbe Umfang wie der aktuelle Einstieg. Reiner deutscher Fließtext, KEINE Markdown-Symbole, keine Meta-Kommentare.
+        ${if (followText.isBlank()) "" else """
 
-        AKTUELLES KAPITEL:
-        ${currentText.take(6000)}
+        ANSCHLUSS (dieser Folgetext bleibt UNVERÄNDERT – dein neuer Einstieg muss NAHTLOS in ihn münden):
+        ${followText.take(500)}
+        """}
+        AKTUELLER EINSTIEG:
+        ${openingText.take(6000)}
 
-        Gib ausschließlich den überarbeiteten Kapiteltext zurück.
+        Gib ausschließlich den neuen Einstiegstext zurück (NICHT den Anschluss wiederholen).
     """.trimIndent()
 
     /** Verbindlicher Fortsetzungs-Block für Serien/Reihen (leer, wenn kein Kontext). */
@@ -218,34 +228,76 @@ object PromptFactory {
         perspective: String, tense: String, storySoFar: String, targetWords: Int,
         isFirst: Boolean, isLast: Boolean, bookSignature: String = "", spiceLevel: Int = 0,
         charactersSummary: String = "", genreBrief: String = "",
+        pastOutline: String = "", upcomingOutline: String = "",
+        finaleMaterial: String = "", totalChapters: Int = 0,
     ): String {
         val spice = SpiceLevel.generationDirective(spiceLevel)
         val position = when {
             isFirst -> "\nERSTE SZENE DES BUCHES: Der erste Satz entscheidet über den Kauf (Amazon-Leseprobe). Sofort fesseln, kein Vorgeplänkel."
-            isLast -> "\nLETZTE SZENE DES BUCHES: Löse den zentralen Konflikt emotional befriedigend auf, greife ein Motiv vom Anfang wieder auf."
+            isLast -> "\nLETZTE SZENE DES BUCHES (Vorrang vor allen Sog-Regeln): Löse den zentralen Konflikt emotional befriedigend auf, beantworte die zentrale Frage des Buches EXPLIZIT, schließe alle benannten offenen Fäden und greife ein Motiv vom Anfang wieder auf. Ein ruhiger Ausklang ist erwünscht. KEIN Cliffhanger, keine neue Frage im Schlusssatz.${if (finaleMaterial.isBlank()) "" else "\nMATERIAL FÜRS FINALE:\n${finaleMaterial.take(1500)}"}"
             else -> ""
         }
+        // Buchposition: gibt dem Kapitel seinen Platz im Spannungsbogen (gegen flache Mitte).
+        val positionLine = if (totalChapters > 1)
+            "\nPOSITION IM BUCH: Kapitel $chapterNumber von $totalChapters – Spannung und emotionale Einsätze steigen gegenüber früheren Kapiteln spürbar an."
+        else ""
+        // Deterministische Einstiegs-Rotation: verhindert strukturell gleichförmige
+        // Kapitelanfänge („Beginne mitten in der Handlung" erzeugte sonst 40x dasselbe Muster).
+        val openerStyles = listOf(
+            "mitten in einem Dialog (erster Satz ist gesprochene Rede)",
+            "mit einer konkreten körperlichen Handlung der Perspektivfigur",
+            "mit einem scharfen Sinnesdetail (Geruch, Geräusch, Berührung), das sofort Bedeutung hat",
+            "mit einem Gedanken, der dem widerspricht, was die Figur gerade tut",
+            "mit einem knappen Zeitsprung-Marker (z. B. Drei Tage später ...), dann sofort Handlung"
+        )
+        val openerLine = if (isFirst) "" else
+            "\nKAPITELEINSTIEG: Beginne dieses Kapitel ${openerStyles[chapterNumber % openerStyles.size]} – anders als die Nachbarkapitel."
+        val pastBlock = if (pastOutline.isBlank()) "" else
+            "\nBISHERIGER VERLAUF (Fakten bleiben verbindlich, nichts wiederholen):\n${pastOutline.take(2500)}"
+        val upcomingBlock = if (upcomingOutline.isBlank()) "" else
+            "\nKOMMENDE KAPITEL (NICHT vorwegnehmen oder auflösen – stattdessen Vorausdeutungen säen):\n${upcomingOutline.take(600)}"
         return """
         Schreibe Kapitel $chapterNumber ("$chapterTitle") des Romans "$bookTitle".
         SPRACHE: ausschließlich $language. STIL: $style. Erzählperspektive: $perspective. Zeitform: $tense.
         ${block(bookSignature)}${block(spice)}${genreDirectiveBlock(genreBrief)}
         Kapitelziel: $chapterGoal
         Zentraler Konflikt: $chapterConflict
-        ${if (charactersSummary.isBlank()) "" else "FIGUREN (Namen und Eigenschaften konsistent halten):\n$charactersSummary"}
+        ${if (charactersSummary.isBlank()) "" else "FIGUREN (Merkmale sind KANONISCH – Namen, Alter, Beruf, Beziehungen nie verändern):\n$charactersSummary"}
         Zielumfang: ca. $targetWords Wörter (Szene ausschreiben, nicht zusammenfassen).
-
-        Bisherige Handlung:
+        $positionLine$pastBlock
+        SO ENDETE DAS VORIGE KAPITEL (knüpfe zeitlich und logisch DANACH an, ohne es nachzuerzählen):
         ${if (storySoFar.isBlank()) "Dies ist der Anfang des Buches." else storySoFar.take(6000)}
-        $position
+        $upcomingBlock
+        $position$openerLine
 
         ${ContentSafetyFilter.promptDirective}
 
-        HANDWERK: Zeigen statt benennen (Emotion nie behaupten). Variiere Satzlänge stark. Beginne mitten in der Handlung. Konkrete Sinnesdetails statt generischer. Kapitelende mit einem Haken. Reiner Fließtext – keine Markdown-Symbole, keine Überschriften.
+        HANDWERK: Zeigen statt benennen (Emotion nie behaupten). Variiere Satzlänge stark. Beginne mitten in der Handlung. Konkrete Sinnesdetails statt generischer. ${if (isLast) "Das Buchende zahlt aus: alle offenen Fragen schließen, kein neuer Haken." else "Kapitelende mit einem Haken."} Reiner Fließtext – keine Markdown-Symbole, keine Überschriften.
         ZEITGEMÄSSE SPRACHE: Schreibe wie ein aktueller deutschsprachiger Bestseller von heute – klar, natürlich, modern. KEINE altertümliche oder geschwollene Sprache ("alsbald", "ward", "Antlitz", "Maid", "auf dass") und kein Pathos. Der Text muss inhaltlich Sinn ergeben und logisch zusammenhängen.
         ERZÄHLTEMPO VARIIEREN: Action, Konfrontation und Wendepunkte schnell und knapp (kurze Sätze, wenig Innenschau); ruhige Momente dürfen atmen, aber kein durchgehend langsames Tempo. Lange Wetter-/Stimmungspassagen, die die Handlung nicht vorantreiben, vermeiden.
         Gib ausschließlich den fertigen Prosatext aus.
     """.trimIndent()
     }
+
+    /**
+     * Chirurgischer Line-Edit: ersetzt GENAU die erkannten KI-Floskeln/Archaismen,
+     * ohne das Kapitel neu zu schreiben – zuverlässiger und billiger als ein dritter
+     * Komplett-Rewrite, und die Klischees verschwinden messbar statt nur gezählt zu werden.
+     */
+    fun lineEdit(language: String, text: String, offenders: List<String>): String = """
+        Im folgenden Romankapitel kommen abgegriffene Formulierungen vor. Ersetze AUSSCHLIESSLICH
+        diese Formulierungen durch frische, konkrete, zur Szene passende Alternativen – ändere sonst
+        NICHTS (keine Handlung, keine Namen, keine Struktur, keine Kürzungen).
+        Sprache: $language.
+
+        ZU ERSETZEN (jede einzelne Stelle):
+        ${offenders.joinToString("\n") { "- $it" }}
+
+        KAPITEL:
+        $text
+
+        Gib den vollständigen Kapiteltext mit den Ersetzungen zurück, sonst unverändert.
+    """.trimIndent()
 
     fun kdpMetadata(
         title: String, author: String, genre: String, audience: String,

@@ -41,4 +41,11 @@ class ContentSafetyFilterTest {
         val text = "Sie war 15 Jahre alt, als die Szene in Geschlechtsverkehr überging."
         assertFalse(ContentSafetyFilter.isSafe(text))
     }
+
+    @Test
+    fun threeDigitAdultAgeIsNotFlagged() {
+        // Regression: „115 Jahre" darf nicht als „15 Jahre" gewertet werden (Ziffern-Grenze).
+        val text = "Der Vampir war 115 Jahre alt, als sie leidenschaftlichen Sex hatten."
+        assertTrue(ContentSafetyFilter.isSafe(text))
+    }
 }

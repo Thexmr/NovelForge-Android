@@ -47,4 +47,19 @@ class ContentQualityTest {
         val longEnough = (1..200).joinToString(" ") { "Wort" }
         assertTrue(ContentQuality.acceptsChapter(longEnough, 100))
     }
+
+    @Test
+    fun aiTellMatchesListsOnlyPresentPhrases() {
+        val text = "Ihr Atem stockte. Die Luft zwischen ihnen knisterte. Dann ging sie zum Auto."
+        val hits = ContentQuality.aiTellMatches(text)
+        assertTrue(hits.contains("ihr atem stockte"))
+        assertTrue(hits.contains("die luft zwischen ihnen knisterte"))
+        assertTrue(ContentQuality.aiTellMatches("Sie fuhr zur Arbeit und trank Kaffee.").isEmpty())
+    }
+
+    @Test
+    fun archaicMatchesFindsArchaicWords() {
+        assertTrue(ContentQuality.archaicMatches("Alsbald erblickte er ihr Antlitz.").isNotEmpty())
+        assertTrue(ContentQuality.archaicMatches("Er sah ihr Gesicht sofort.").isEmpty())
+    }
 }

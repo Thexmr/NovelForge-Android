@@ -192,6 +192,18 @@ object ContentQuality {
         return count
     }
 
+    /** Liste der im Text tatsächlich vorkommenden KI-Floskeln (für den chirurgischen Line-Edit). */
+    fun aiTellMatches(text: String): List<String> {
+        val lower = text.lowercase()
+        return aiTellPhrases.filter { lower.contains(it) }
+    }
+
+    /** Liste der im Text tatsächlich vorkommenden Archaismen. */
+    fun archaicMatches(text: String): List<String> {
+        val lower = text.lowercase()
+        return archaicTellPhrases.filter { lower.contains(it) }
+    }
+
     /** Klingt der Text maschinell ODER altertümlich (für seine Länge)? */
     fun soundsLikeAI(text: String): Boolean {
         val words = wordCount(text)

@@ -75,8 +75,10 @@ object ContentSafetyFilter {
         ).joinToString("|") + ")"
     )
 
+    // (?<!\d): keine Teiltreffer in längeren Zahlen – „115 Jahre" darf nicht als
+    // „15 Jahre" gewertet werden (Fehlblockade legitimer erwachsener Figuren).
     private val ageRegex = Regex(
-        "(?i)(?:\\bim alter von\\s+)?(\\d{1,2})\\s*[-‑ ]?\\s*(?:jährig\\w*|jahre alt|jahre|jahren|j\\.)"
+        "(?i)(?:\\bim alter von\\s+)?(?<!\\d)(\\d{1,2})\\s*[-‑ ]?\\s*(?:jährig\\w*|jahre alt|jahre|jahren|j\\.)"
     )
 
     /** true = Text darf gespeichert werden. */
