@@ -198,10 +198,44 @@ object ContentQuality {
         return aiTellPhrases.filter { lower.contains(it) }
     }
 
+    /**
+     * Endet das Kapitel ohne Sog? (Rein deterministisch: ruhiges Beschreibungs-Ende ohne
+     * Frage, Zuspitzung, wörtliche Rede oder kurzen Schlag.) Für Nicht-Schlusskapitel wird
+     * dann nur der letzte Absatz zu einem Haken umgeformt.
+     */
+    fun hasWeakChapterEnding(text: String): Boolean {
+        val trimmed = text.trim()
+        if (wordCount(trimmed) < 120) return false // Kurztexte nicht beurteilen
+        val tail = trimmed.takeLast(400)
+        if (tail.contains("?")) return false
+        if (tail.endsWith("…") || tail.endsWith("–") || tail.endsWith("-")) return false
+        if (tail.endsWith("\"") || tail.endsWith("“") || tail.endsWith("«") || tail.endsWith("»")) return false
+        val sentences = tail.split('.', '!', '…').map { it.trim() }.filter { it.isNotEmpty() }
+        val last = sentences.lastOrNull() ?: return true
+        return wordCount(last) > 8 // kurzer Schlusssatz = bewusster Schlag → stark
+    }
+
     /** Liste der im Text tatsächlich vorkommenden Archaismen. */
     fun archaicMatches(text: String): List<String> {
         val lower = text.lowercase()
         return archaicTellPhrases.filter { lower.contains(it) }
+    }
+
+    /**
+     * Akademisches Fachvokabular, das normale Leser nicht kennen („Mediävistiker" sagt
+     * niemand). Bewusst nur EINDEUTIG seltene Wörter – keine False Positives.
+     */
+    private val jargonTellPhrases = listOf(
+        "mediävist", "komparatist", "kartographisch", "kartografisch", "diaphan",
+        "ephemer", "evozier", "konzedier", "proliferier", "habilitand", "hermeneut",
+        "ontolog", "epistemolog", "palimpsest", "apokryph", "äquidistant",
+        "dichotom", "paradigmat", "narratolog", "semiot", "diskursiv"
+    )
+
+    /** Im Text vorkommendes Fachvokabular (für den chirurgischen Line-Edit). */
+    fun jargonMatches(text: String): List<String> {
+        val lower = text.lowercase()
+        return jargonTellPhrases.filter { lower.contains(it) }
     }
 
     /** Klingt der Text maschinell ODER altertümlich (für seine Länge)? */

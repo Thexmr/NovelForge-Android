@@ -62,4 +62,21 @@ class ContentQualityTest {
         assertTrue(ContentQuality.archaicMatches("Alsbald erblickte er ihr Antlitz.").isNotEmpty())
         assertTrue(ContentQuality.archaicMatches("Er sah ihr Gesicht sofort.").isEmpty())
     }
+
+    @Test
+    fun jargonMatchesFlagsAcademicVocabulary() {
+        val hits = ContentQuality.jargonMatches("Der Mediävistiker deutete den Fleck kartographisch.")
+        assertTrue(hits.contains("mediävist"))
+        assertTrue(hits.contains("kartographisch"))
+        assertTrue(ContentQuality.jargonMatches("Sie tranken Kaffee und stritten über Geld.").isEmpty())
+    }
+
+    @Test
+    fun weakChapterEndingIsDetected() {
+        val filler = "Sie ging weiter durch die Stadt und sah sich die Fenster an. ".repeat(15)
+        val weak = filler + "Der Abend legte sich ruhig über die Dächer der kleinen Stadt und alles wurde still und friedlich an diesem langen Tag."
+        assertTrue(ContentQuality.hasWeakChapterEnding(weak))
+        assertFalse(ContentQuality.hasWeakChapterEnding(filler + "Aber warum war die Tür offen?"))
+        assertFalse(ContentQuality.hasWeakChapterEnding(filler + "Dann sah sie das Blut."))
+    }
 }

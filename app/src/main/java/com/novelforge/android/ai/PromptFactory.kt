@@ -57,10 +57,11 @@ object PromptFactory {
         WAS EINEN VIRALEN TITEL AUSMACHT:
         - Neugier-Lücke: ein angedeutetes Geheimnis, eine Drohung, eine Frage, ein Tabu – der Leser MUSS wissen, was dahintersteckt.
         - Emotion und Einsatz sofort spürbar (Verrat, verbotene Liebe, Gefahr, Verlust, Rache).
-        - Konkret und bildhaft, nicht abstrakt. Kurz: 2-6 Wörter, im Thumbnail sofort lesbar.
+        - POLARISIEREN: Der Titel muss eine SOFORTIGE emotionale Reaktion auslösen – Empörung, Tabu-Reiz, moralisches Dilemma, eine Anschuldigung oder ein gefährliches Versprechen. Ein Titel, zu dem jeder eine Meinung hat, wird geklickt; ein netter, gefälliger Titel wird überscrollt. Mut zur Kante: "Ich habe seinen Bruder geliebt" schlägt "Eine schwierige Liebe".
+        - Konkret und bildhaft, nicht abstrakt. Kurz: 2-6 Wörter, im Thumbnail sofort lesbar. Nur Alltagswörter, die jeder kennt.
         - Genre-Signal: der Titel fühlt sich nach $genre an.
         - Direkte Ansprache (du/dich/mein/dein) erzeugt Nähe und Sofort-Spannung.
-        Starke Bauarten (mischen): Bevor/Wenn/Warum/Was ...; Das Mädchen, das ...; eine Drohung oder ein Versprechen als Satz; ein aufgeladenes konkretes Objekt; eine Negation (Niemand ..., Kein ...); ein Name plus Einsatz.
+        Starke Bauarten (mischen): Bevor/Wenn/Warum/Was ...; Das Mädchen, das ...; eine Drohung oder ein Versprechen als Satz; ein Geständnis oder eine Anschuldigung in der Ich-/Du-Form; ein aufgeladenes konkretes Objekt; eine Negation (Niemand ..., Kein ...); ein Name plus Einsatz.
 
         STRENG VERBOTEN: Genre-Wörter als Titel (Liebesroman, Erotik-Roman, Thriller); Platzhalter (Titel); kryptische Wort-Collagen oder Nonsens (z. B. Schluckauf im Erdboden); Berufs-/Ort-Klischees (Die [Beruf] von [Ort]); mehr als 6 Wörter; Tippfehler; alles, was auf zehn anderen Büchern stehen könnte.
 
@@ -76,8 +77,10 @@ object PromptFactory {
             "\nVERMEIDE Wiederholungen – diese Titel/Ideen gab es in dieser Produktion schon, liefere etwas DEUTLICH anderes (Setting, Hook, Figuren): ${avoid.joinToString(" | ")}\n"
         return """
         Erfinde EINE starke, vermarktbare Buchidee (Genre: $genre, Sprache: $language) mit einem
-        viralen, aber sofort verständlichen Titel (kein kryptisches Wortspiel, keine paradoxen
-        Wort-Collagen, kein Berufs-Ort-Klischee). Der Titel klingt wie ein echter Verlags-Bestseller.
+        viralen, POLARISIERENDEN, aber sofort verständlichen Titel (Tabu-Reiz, Anschuldigung oder
+        gefährliches Versprechen – ein Titel, zu dem jeder sofort ein Gefühl hat; kein kryptisches
+        Wortspiel, keine paradoxen Wort-Collagen, kein Berufs-Ort-Klischee, nur Alltagswörter).
+        Der Titel klingt wie ein echter Verlags-Bestseller.
         $avoidBlock
         Antworte exakt in diesem Format:
         TITEL: [2-6 Wörter, klickstark UND klar]
@@ -250,6 +253,13 @@ object PromptFactory {
             "mit einem Gedanken, der dem widerspricht, was die Figur gerade tut",
             "mit einem knappen Zeitsprung-Marker (z. B. Drei Tage später ...), dann sofort Handlung"
         )
+        // Haken-Typ-Rotation fürs Kapitelende: verhindert 40x denselben Cliffhanger-Bauplan.
+        val hookTypes = listOf(
+            "eine offene Frage, die der Leser SOFORT beantwortet haben will",
+            "eine konkrete Bedrohung, die gerade sichtbar wird",
+            "eine überraschende Enthüllung im letzten Absatz",
+            "eine Entscheidung der Hauptfigur, deren Ausgang NICHT mehr gezeigt wird"
+        )
         val openerLine = if (isFirst) "" else
             "\nKAPITELEINSTIEG: Beginne dieses Kapitel ${openerStyles[chapterNumber % openerStyles.size]} – anders als die Nachbarkapitel."
         val pastBlock = if (pastOutline.isBlank()) "" else
@@ -272,8 +282,10 @@ object PromptFactory {
 
         ${ContentSafetyFilter.promptDirective}
 
-        HANDWERK: Zeigen statt benennen (Emotion nie behaupten). Variiere Satzlänge stark. Beginne mitten in der Handlung. Konkrete Sinnesdetails statt generischer. ${if (isLast) "Das Buchende zahlt aus: alle offenen Fragen schließen, kein neuer Haken." else "Kapitelende mit einem Haken."} Reiner Fließtext – keine Markdown-Symbole, keine Überschriften.
+        HANDWERK: Zeigen statt benennen (Emotion nie behaupten). Variiere Satzlänge stark. Beginne mitten in der Handlung. Konkrete Sinnesdetails statt generischer. ${if (isLast) "Das Buchende zahlt aus: alle offenen Fragen schließen, kein neuer Haken." else "Kapitelende mit einem Haken: ${hookTypes[chapterNumber % hookTypes.size]}."} Reiner Fließtext – keine Markdown-Symbole, keine Überschriften.
+        ${if (isLast) "" else "SOG (Leser festhalten): Halte durchgehend mindestens eine BENANNTE offene Frage aktiv und beantworte nie alle zugleich. Baue Mikro-Spannung in jede Szene (ein Detail stimmt nicht, jemand verschweigt etwas, eine Uhr tickt). Jede Seite gibt einen Grund weiterzulesen."}
         ZEITGEMÄSSE SPRACHE: Schreibe wie ein aktueller deutschsprachiger Bestseller von heute – klar, natürlich, modern. KEINE altertümliche oder geschwollene Sprache ("alsbald", "ward", "Antlitz", "Maid", "auf dass") und kein Pathos. Der Text muss inhaltlich Sinn ergeben und logisch zusammenhängen.
+        ALLTAGSSPRACHE STATT FACHVOKABULAR: Verwende NUR Wörter, die ein normaler Leser kennt und im Alltag benutzt. KEINE akademischen Fachbegriffe, bildungssprachlichen Adjektive oder seltenen Fremdwörter (z. B. NIEMALS "Mediävistiker", "Komparatistik", "kartographisch", "diaphan", "ephemer", "evozieren", "konzedieren"). Fachberufe so beschreiben, wie Menschen wirklich reden ("Professor für mittelalterliche Geschichte" statt "Mediävistiker"; "ein Fleck wie eine Landkarte" statt "kartographisch"). Auch KEINE unerklärten Bildungs-Anspielungen (antike Dramen, Dissertationsthemen, Literaturtheorie), die nur Akademiker verstehen. Härtetest: Würde jemand das Wort unter Freunden sagen? Wenn nein, ersetze es.
         ERZÄHLTEMPO VARIIEREN: Action, Konfrontation und Wendepunkte schnell und knapp (kurze Sätze, wenig Innenschau); ruhige Momente dürfen atmen, aber kein durchgehend langsames Tempo. Lange Wetter-/Stimmungspassagen, die die Handlung nicht vorantreiben, vermeiden.
         Gib ausschließlich den fertigen Prosatext aus.
     """.trimIndent()
@@ -299,6 +311,23 @@ object PromptFactory {
         Gib den vollständigen Kapiteltext mit den Ersetzungen zurück, sonst unverändert.
     """.trimIndent()
 
+    /**
+     * Schärft NUR den letzten Absatz eines Kapitels zu einem echten Haken –
+     * Kapitel, die ruhig „auslaufen", lassen Leser das Buch weglegen.
+     */
+    fun sharpenEnding(language: String, genre: String, lastParagraph: String): String = """
+        Der folgende letzte Absatz eines Romankapitels (Genre: $genre) endet ohne Sog.
+        Schreibe NUR diesen Absatz so um, dass er mit einem echten Haken endet (offene Frage,
+        konkrete Bedrohung, Enthüllung oder eine Entscheidung ohne gezeigten Ausgang) – der Leser
+        darf hier nicht aufhören können. Ereignisse und Fakten des Absatzes bleiben erhalten,
+        etwa gleicher Umfang. Sprache: $language. Reiner Fließtext ohne Markdown.
+
+        LETZTER ABSATZ:
+        ${lastParagraph.take(2000)}
+
+        Gib ausschließlich den umgeformten Absatz zurück.
+    """.trimIndent()
+
     fun kdpMetadata(
         title: String, author: String, genre: String, audience: String,
         synopsis: String, language: String, tropes: String = "", spiceLevel: Int = 0,
@@ -315,7 +344,7 @@ object PromptFactory {
         Keine Hinweise auf KI/Automatisierung. Optimiere TITEL, UNTERTITEL und KEYWORDS für die Amazon-Suche (ohne Keyword-Spam).
 
         Antworte exakt in diesem Format:
-        VERKAUFSTITEL: [EXTREM starker, viraler Titel (2-6 Wörter), der beim Scrollen sofort zum Klicken zwingt – ABER sofort verständlich und natürlich wie ein echter Verlags-Bestseller, KEINE komischen/kryptischen oder paradoxen Wort-Collagen. Muss zum tatsächlichen Inhalt oben und zum Genre "$genre" passen, kein irreführender Clickbait. Keine Anführungszeichen.]
+        VERKAUFSTITEL: [EXTREM starker, viraler, POLARISIERENDER Titel (2-6 Wörter, nur Alltagswörter), der beim Scrollen sofort zum Klicken zwingt – Tabu-Reiz, Anschuldigung oder gefährliches Versprechen, zu dem jeder sofort ein Gefühl hat (nett/gefällig wird überscrollt) – ABER sofort verständlich und natürlich wie ein echter Verlags-Bestseller, KEINE komischen/kryptischen oder paradoxen Wort-Collagen. Muss zum tatsächlichen Inhalt oben und zum Genre "$genre" passen, kein irreführender Clickbait. Keine Anführungszeichen.]
         UNTERTITEL: [SEO-Untertitel mit den stärksten Suchbegriffen, 5-12 Wörter]
         VERKAUFSTEXT: [150-200 Wörter, scanbare Absätze, Hook-Taglinie, steigende Stakes, Schlusszeile, eine "Für Fans von …"-Zeile]
         KEYWORDS: [genau 7 Long-Tail-Suchbegriffe, kommagetrennt]

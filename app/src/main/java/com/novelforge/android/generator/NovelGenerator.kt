@@ -214,11 +214,12 @@ class NovelGenerator(config: AiConfig) {
                 ContentQuality.strippingInlineFormatting(
                     ContentQuality.strippingPromptArtifacts(best)))
             text = ContentQuality.stripLeadingTitleEcho(text, ch.title)
-            // Chirurgischer Line-Edit für weiterhin KI-klingende Kapitel: ersetzt GENAU die
-            // erkannten Floskeln/Archaismen statt (teuer und riskant) neu zu schreiben.
-            // Läuft nur für geflaggte Kapitel → begrenzte Zusatzkosten.
-            if (text.length > 400 && ContentQuality.soundsLikeAI(text)) {
-                val offenders = (ContentQuality.aiTellMatches(text) + ContentQuality.archaicMatches(text))
+            // Chirurgischer Line-Edit für KI-klingende Kapitel ODER Kapitel mit akademischem
+            // Fachvokabular („Mediävistiker"): ersetzt GENAU die erkannten Floskeln/Archaismen/
+            // Fachwörter statt (teuer und riskant) neu zu schreiben. Nur für geflaggte Kapitel.
+            val jargon = ContentQuality.jargonMatches(text)
+            if (text.length > 400 && (ContentQuality.soundsLikeAI(text) || jargon.isNotEmpty())) {
+                val offenders = (ContentQuality.aiTellMatches(text) + ContentQuality.archaicMatches(text) + jargon)
                     .distinct().take(12)
                 if (offenders.isNotEmpty()) {
                     val edited = try {
@@ -235,6 +236,31 @@ class NovelGenerator(config: AiConfig) {
                         !ContentQuality.containsMetaRequest(cleanedEdit) &&
                         ContentSafetyFilter.isSafe(cleanedEdit)
                     ) text = cleanedEdit
+                }
+            }
+            // Kapitelende ohne Sog? Nur den LETZTEN Absatz zu einem Haken umformen
+            // (nicht das Schlusskapitel – das darf ruhig ausklingen). Ein Mini-Call,
+            // deterministisch zurückgespliced.
+            if (!isLastChapter && text.length > 600 && ContentQuality.hasWeakChapterEnding(text)) {
+                val parts = text.split("\n\n")
+                val lastPara = parts.lastOrNull { it.isNotBlank() } ?: ""
+                if (lastPara.length in 80..2000) {
+                    val sharpened = try {
+                        writer.chat(
+                            system = "Du bist ein Bestseller-Autor. Gib ausschließlich Prosatext zurück.",
+                            prompt = PromptFactory.sharpenEnding(project.language, project.genre, lastPara),
+                            temperature = 0.8, maxTokens = 1200
+                        ).trim()
+                    } catch (e: Exception) { "" }
+                    val cleanedSharp = ContentQuality.humanizeProse(
+                        ContentQuality.strippingInlineFormatting(
+                            ContentQuality.strippingPromptArtifacts(sharpened)))
+                    if (cleanedSharp.length > 40 && !ContentQuality.containsMetaRequest(cleanedSharp) &&
+                        ContentSafetyFilter.isSafe(cleanedSharp)
+                    ) {
+                        val idx = text.lastIndexOf(lastPara)
+                        if (idx >= 0) text = text.substring(0, idx) + cleanedSharp
+                    }
                 }
             }
             if (text.isBlank() || ContentQuality.containsMetaRequest(text)) {
