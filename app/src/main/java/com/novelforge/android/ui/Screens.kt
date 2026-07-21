@@ -593,6 +593,7 @@ fun SettingsScreen(vm: AppViewModel) {
 fun ProjectScreen(
     vm: AppViewModel, projectId: String,
     onOpenProject: (String) -> Unit = {}, onBack: () -> Unit = {},
+    onKdpUpload: (String) -> Unit = {},
 ) {
     val projects by vm.projects.collectAsState()
     val progress by vm.progress.collectAsState()
@@ -732,6 +733,13 @@ fun ProjectScreen(
                         modifier = Modifier.weight(1f)
                     ) { Text("KDP kopieren") }
                 }
+                Spacer(Modifier.height(8.dp))
+                // Autonomer KDP-Upload (WebView): Login bleibt, EPUB+Cover automatisch,
+                // speichert nur als Entwurf.
+                Button(
+                    onClick = { onKdpUpload(project.id) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Autonom zu KDP hochladen (Entwurf)") }
             }
         }
 

@@ -119,8 +119,21 @@ private fun AppNavHost(nav: NavHostController, vm: AppViewModel) {
                 vm,
                 projectId = entry.arguments?.getString("id").orEmpty(),
                 onOpenProject = { id -> nav.navigate("project/$id") },
-                onBack = { if (!nav.popBackStack()) nav.navigate("dashboard") }
+                onBack = { if (!nav.popBackStack()) nav.navigate("dashboard") },
+                onKdpUpload = { id -> nav.navigate("kdp/$id") }
             )
+        }
+        composable(
+            "kdp/{id}",
+            arguments = listOf(navArgument("id") { type = NavType.StringType })
+        ) { entry ->
+            val id = entry.arguments?.getString("id").orEmpty()
+            val project = vm.projects.collectAsState().value.firstOrNull { it.id == id }
+            if (project != null) {
+                KdpUploadScreen(project, onBack = { if (!nav.popBackStack()) nav.navigate("dashboard") })
+            } else {
+                nav.popBackStack()
+            }
         }
     }
 }
