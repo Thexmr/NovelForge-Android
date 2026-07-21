@@ -72,6 +72,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.novelforge.android.ai.AiConfig
+import com.novelforge.android.ai.isLocalAiEndpoint
 import com.novelforge.android.domain.Chapter
 import com.novelforge.android.domain.Genres
 import com.novelforge.android.domain.Project
@@ -217,7 +218,7 @@ fun DashboardScreen(vm: AppViewModel, onOpen: (String) -> Unit) {
     val auto by vm.autoRunning.collectAsState()
     val completed by vm.completed.collectAsState()
     val config by vm.config.collectAsState()
-    val apiMissing = config.apiKey.isBlank()
+    val apiMissing = !config.usable
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= WIDE_DP.dp
@@ -451,7 +452,7 @@ fun NewBookScreen(vm: AppViewModel, onCreated: (String) -> Unit) {
     var pages by rememberSaveable { mutableStateOf("300") }
     var chapters by rememberSaveable { mutableStateOf("24") }
 
-    val canCreate = title.isNotBlank() && author.isNotBlank() && config.apiKey.isNotBlank()
+    val canCreate = title.isNotBlank() && author.isNotBlank() && config.usable
 
     ScrollScreen { wide ->
         Column {
@@ -485,8 +486,8 @@ fun NewBookScreen(vm: AppViewModel, onCreated: (String) -> Unit) {
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
         }
 
-        if (config.apiKey.isBlank()) {
-            Text("Erst in den Einstellungen einen API-Key hinterlegen.",
+        if (!config.usable) {
+            Text("Erst in den Einstellungen einen API-Key hinterlegen (oder einen lokalen Server eintragen).",
                 color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
 
@@ -533,11 +534,32 @@ fun SettingsScreen(vm: AppViewModel) {
         }
     }
 
+    // Lokaler Endpunkt (LAN-IP, localhost, Emulator-Host) → kein API-Key nötig.
+    val isLocal = isLocalAiEndpoint(baseUrl)
+    val configOk = config.usable
+
     ScrollScreen {
         Text("Einstellungen", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Medium)
         SectionLabel("KI-Anbieter")
-        Text("Ollama Cloud oder ein OpenAI-kompatibler Endpunkt. Der API-Key wird nur lokal gespeichert.",
+        Text("Cloud (Ollama / OpenAI-kompatibel) ODER lokal (Ollama, llama.cpp, LM Studio). Lokal braucht keinen API-Key. Key wird nur auf dem Gerät gespeichert.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+        // Schnellvorlagen: Cloud vs. lokaler Mac im LAN vs. Modell direkt auf dem Gerät.
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = {
+                baseUrl = "https://ollama.com"; model = "kimi-k2.6"
+            }, modifier = Modifier.weight(1f)) { Text("Cloud", maxLines = 1) }
+            OutlinedButton(onClick = {
+                // Mac/PC im selben WLAN mit laufendem Ollama. IP anpassen!
+                baseUrl = "http://192.168.1.10:11434"; model = "qwen2.5:7b"; apiKey = ""
+            }, modifier = Modifier.weight(1f)) { Text("Lokal LAN", maxLines = 1) }
+            OutlinedButton(onClick = {
+                // Modell direkt auf dem Gerät (z. B. Ollama/Termux, llama.cpp-Server).
+                baseUrl = "http://127.0.0.1:11434"; model = "qwen2.5:3b"; apiKey = ""
+            }, modifier = Modifier.weight(1f)) { Text("Gerät", maxLines = 1) }
+        }
+        if (isLocal) Text("Lokaler Endpunkt erkannt – kein API-Key nötig. IP/Port ggf. an deinen Server anpassen (Ollama: :11434, llama.cpp/LM Studio: .../v1).",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary)
 
         OutlinedTextField(baseUrl, { baseUrl = it }, label = { Text("Basis-URL") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(model, { model = it }, label = { Text("Modell") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -553,10 +575,15 @@ fun SettingsScreen(vm: AppViewModel) {
             modifier = Modifier.fillMaxWidth().height(50.dp)
         ) { Text("Speichern") }
 
-        StatusBadge(if (config.apiKey.isBlank()) ProjectStatus.FAILED else ProjectStatus.COMPLETED)
-        Text(if (config.apiKey.isBlank()) "Kein API-Key hinterlegt" else "API-Key ist hinterlegt",
+        StatusBadge(if (configOk) ProjectStatus.COMPLETED else ProjectStatus.FAILED)
+        Text(
+            when {
+                config.apiKey.isNotBlank() -> "API-Key ist hinterlegt"
+                configOk -> "Lokaler Server – kein API-Key nötig"
+                else -> "Kein API-Key hinterlegt"
+            },
             style = MaterialTheme.typography.bodySmall,
-            color = if (config.apiKey.isBlank()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary)
+            color = if (configOk) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.error)
     }
 }
 

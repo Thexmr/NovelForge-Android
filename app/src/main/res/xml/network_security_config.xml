@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Erlaubt Klartext-HTTP, damit lokale KI-Server (Ollama :11434, llama.cpp/LM Studio
+  im LAN oder auf dem Gerät) erreichbar sind – diese laufen ohne TLS. Cloud-Anbieter
+  bleiben unverändert über HTTPS erreichbar. Für eine persönliche Buch-Werkzeug-App
+  ist Klartext im eigenen Netz vertretbar.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

@@ -19,7 +19,21 @@ data class AiConfig(
     // Optionales, stärkeres Modell nur fürs Schreiben der Kapitel (zweistufig).
     // Leer = es wird durchgehend `model` verwendet.
     val writingModel: String = "",
-)
+) {
+    /** Lokaler Endpunkt (LAN/localhost/Emulator-Host) – braucht keinen API-Key. */
+    val isLocal: Boolean get() = isLocalAiEndpoint(baseUrl)
+    /** Einsatzbereit: Key hinterlegt ODER lokaler Server (kein Key nötig). */
+    val usable: Boolean get() = apiKey.isNotBlank() || isLocal
+}
+
+/**
+ * Erkennt lokale KI-Server (eigener Mac/PC im LAN, localhost, Android-Emulator-Host
+ * 10.0.2.2, private RFC-1918-Bereiche). Solche Server laufen ohne API-Key und meist
+ * über Klartext-HTTP.
+ */
+fun isLocalAiEndpoint(url: String): Boolean =
+    Regex("localhost|127\\.0\\.0\\.1|::1|10\\.0\\.2\\.2|://(10\\.|192\\.168\\.|172\\.(1[6-9]|2\\d|3[01])\\.)")
+        .containsMatchIn(url.lowercase())
 
 class AiException(message: String) : Exception(message)
 
@@ -39,7 +53,16 @@ class AiClient(private val config: AiConfig) {
 
     private val json = "application/json; charset=utf-8".toMediaType()
 
-    private val isOllama: Boolean get() = config.baseUrl.contains("ollama", ignoreCase = true)
+    // Ollama-natives Protokoll (/api/chat) nur, wenn NICHT der OpenAI-kompatible
+    // /v1-Pfad genutzt wird. So läuft llama.cpp/LM Studio (/v1) und Ollamas eigener
+    // /v1-Kompatibilitätsendpunkt über den OpenAI-Zweig; lokales Ollama (:11434) nativ.
+    private val isOllama: Boolean
+        get() = !config.baseUrl.contains("/v1") &&
+            (config.baseUrl.contains("ollama", ignoreCase = true) || config.baseUrl.contains(":11434"))
+
+    // Lokaler Endpunkt (eigener Mac/PC im LAN, Emulator-Host, Gerät selbst):
+    // braucht KEINEN API-Key und darf Klartext-HTTP nutzen.
+    private val isLocalEndpoint: Boolean get() = isLocalAiEndpoint(config.baseUrl)
 
     suspend fun chat(
         system: String,
@@ -47,7 +70,9 @@ class AiClient(private val config: AiConfig) {
         temperature: Double = 0.8,
         maxTokens: Int = 2000,
     ): String = withContext(Dispatchers.IO) {
-        if (config.apiKey.isBlank()) throw AiException("Kein API-Key hinterlegt (Einstellungen).")
+        // Lokale Server (Ollama/llama.cpp) brauchen keinen Key – nur Cloud verlangt einen.
+        if (config.apiKey.isBlank() && !isLocalEndpoint)
+            throw AiException("Kein API-Key hinterlegt (Einstellungen).")
 
         val url: String
         val body: JSONObject
@@ -62,12 +87,13 @@ class AiClient(private val config: AiConfig) {
     }
 
     private suspend fun requestWithRetry(url: String, body: JSONObject): String {
-        val request = Request.Builder()
+        val builder = Request.Builder()
             .url(url)
-            .addHeader("Authorization", "Bearer ${config.apiKey}")
             .addHeader("Content-Type", "application/json")
             .post(body.toString().toRequestBody(json))
-            .build()
+        // Nur bei vorhandenem Key authentifizieren; lokale Server lehnen sonst ab.
+        if (config.apiKey.isNotBlank()) builder.addHeader("Authorization", "Bearer ${config.apiKey}")
+        val request = builder.build()
 
         var lastError = "unbekannter Fehler"
         var attempt = 0
