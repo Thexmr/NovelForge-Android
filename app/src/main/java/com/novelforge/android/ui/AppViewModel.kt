@@ -3,6 +3,7 @@ package com.novelforge.android.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.novelforge.android.ai.AiClient
 import com.novelforge.android.ai.AiConfig
 import com.novelforge.android.data.ProjectRepository
 import com.novelforge.android.data.SettingsStore
@@ -23,6 +24,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val config: StateFlow<AiConfig> =
         settings.configFlow.stateIn(viewModelScope, SharingStarted.Eagerly, AiConfig())
 
+    // Startwert true → kein Aufblitzen des Assistenten für bereits eingerichtete Nutzer.
+    val onboarded: StateFlow<Boolean> =
+        settings.onboardedFlow.stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
     val projects: StateFlow<List<Project>> = ProjectRepository.projects
 
     // Generierungs-Zustand kommt aus dem prozessweiten Controller (Hintergrund-Service).
@@ -34,6 +39,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun saveSettings(config: AiConfig) {
         viewModelScope.launch { settings.save(config) }
+    }
+
+    /** Schließt den Einrichtungs-Assistenten ab: Konfiguration speichern + Flag setzen. */
+    fun completeOnboarding(config: AiConfig) {
+        viewModelScope.launch {
+            settings.save(config)
+            settings.setOnboarded(true)
+        }
+    }
+
+    /** Assistent überspringen (später in den Einstellungen einrichtbar). */
+    fun skipOnboarding() { viewModelScope.launch { settings.setOnboarded(true) } }
+
+    /** Einmaliger Mini-Aufruf zum Prüfen, ob der KI-Endpunkt antwortet. */
+    suspend fun testConnection(config: AiConfig): Result<Unit> = try {
+        AiClient(config).chat(system = "Antworte extrem knapp.", prompt = "Antworte nur mit: OK", maxTokens = 8)
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Result.failure(e)
     }
 
     fun clearError() { GenerationController.clearError() }

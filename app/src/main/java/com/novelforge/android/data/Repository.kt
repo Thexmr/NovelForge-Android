@@ -1,6 +1,7 @@
 package com.novelforge.android.data
 
 import android.content.Context
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -28,6 +29,7 @@ class SettingsStore(private val context: Context) {
     private val keyApi = stringPreferencesKey("api_key")
     private val keyModel = stringPreferencesKey("model")
     private val keyWritingModel = stringPreferencesKey("writing_model")
+    private val keyOnboarded = booleanPreferencesKey("onboarded")
 
     val configFlow: Flow<AiConfig> = context.dataStore.data.map { p ->
         AiConfig(
@@ -38,6 +40,9 @@ class SettingsStore(private val context: Context) {
         )
     }
 
+    /** true, sobald der Einrichtungs-Assistent einmal abgeschlossen wurde. */
+    val onboardedFlow: Flow<Boolean> = context.dataStore.data.map { p -> p[keyOnboarded] ?: false }
+
     suspend fun save(config: AiConfig) {
         context.dataStore.edit { p ->
             p[keyBase] = config.baseUrl
@@ -45,6 +50,10 @@ class SettingsStore(private val context: Context) {
             p[keyModel] = config.model
             p[keyWritingModel] = config.writingModel
         }
+    }
+
+    suspend fun setOnboarded(done: Boolean) {
+        context.dataStore.edit { p -> p[keyOnboarded] = done }
     }
 }
 

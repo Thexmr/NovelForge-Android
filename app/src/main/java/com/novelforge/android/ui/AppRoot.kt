@@ -17,6 +17,7 @@ import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -39,6 +40,14 @@ private val tabs = listOf(
 
 @Composable
 fun AppRoot(vm: AppViewModel) {
+    val onboarded by vm.onboarded.collectAsState()
+    val config by vm.config.collectAsState()
+    // First-Run-Assistent, bis er abgeschlossen ist ODER bereits eine nutzbare KI-Config vorliegt.
+    if (!onboarded && !config.usable) {
+        OnboardingScreen(vm)
+        return
+    }
+
     val nav = rememberNavController()
     val backStack by nav.currentBackStackEntryAsState()
     val current = backStack?.destination?.route
