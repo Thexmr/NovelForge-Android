@@ -11,6 +11,7 @@ import com.novelforge.android.domain.CopyrightFilter
 import com.novelforge.android.domain.NarrativeSignature
 import com.novelforge.android.domain.Project
 import com.novelforge.android.domain.ProjectStatus
+import com.novelforge.android.domain.RepetitionScan
 
 data class GenProgress(val phase: String, val fraction: Float)
 
@@ -193,12 +194,18 @@ class NovelGenerator(config: AiConfig) {
                 finaleMaterial = finaleMaterial, totalChapters = project.chapters.size
             )
             val minWords = maxOf(120, (wordsPerChapter * 0.6).toInt())
+            // Bisheriges Manuskript für die Wiederholungs-VERMEIDUNG: neue Kapitel
+            // dürfen längere Sätze aus schon geschriebenen Kapiteln nicht wörtlich wiederholen.
+            val priorTexts = project.chapters.take(index).map { it.text }.filter { it.isNotBlank() }
             var best = ""
+            var bestCollisions = Int.MAX_VALUE
             var lastErr: String? = null
-            // Bis zu 2 Versuche: schwache, meta-haltige oder KI-klingende Fassungen werden neu geschrieben.
+            var repeatHint = ""
+            // Bis zu 2 Versuche (bounded – nie Endlosschleife): schwache, meta-haltige,
+            // KI-klingende ODER stark wiederholende Fassungen werden EINMAL neu geschrieben.
             for (attempt in 1..2) {
                 val hint = if (attempt == 1) "" else
-                    "\n\nDer vorige Versuch war zu kurz, generisch oder klang nach KI. Schreibe jetzt das vollständige Kapitel als reinen Fließtext, mindestens $minWords Wörter, ohne Meta-Kommentare. Betont menschlich: harte Satzlängen-Varianz, keine KI-Floskeln, kein deutender Schlusssatz."
+                    "\n\nDer vorige Versuch war zu kurz, generisch oder klang nach KI. Schreibe jetzt das vollständige Kapitel als reinen Fließtext, mindestens $minWords Wörter, ohne Meta-Kommentare. Betont menschlich: harte Satzlängen-Varianz, keine KI-Floskeln, kein deutender Schlusssatz." + repeatHint
                 val candidate = try {
                     writer.chat(
                         system = "Du bist ein Bestseller-Autor. Gib ausschließlich den Prosatext zurück.",
@@ -206,13 +213,30 @@ class NovelGenerator(config: AiConfig) {
                         temperature = 0.85, maxTokens = (wordsPerChapter * 3).coerceIn(2000, 8000)
                     ).trim()
                 } catch (e: Exception) { lastErr = e.message; continue }
+                val candCollisions = RepetitionScan.repeatedSentenceCollisions(candidate, priorTexts)
                 val candGood = candidate.isNotBlank() && !ContentQuality.containsPromptArtifacts(candidate) &&
                     !ContentQuality.soundsLikeAI(candidate) && !ContentQuality.containsMetaRequest(candidate)
                 val bestGood = best.isNotBlank() && !ContentQuality.containsPromptArtifacts(best) &&
                     !ContentQuality.soundsLikeAI(best) && !ContentQuality.containsMetaRequest(best)
-                if (best.isBlank() || (candGood && !bestGood) ||
-                    (candGood == bestGood && wordCount(candidate) > wordCount(best))) best = candidate
-                if (ContentQuality.acceptsChapter(best, wordsPerChapter) && candGood) break
+                // Auswahl: guter Kandidat schlägt schlechten; unter Gleichwertigen zählt zuerst
+                // WENIGER Wiederholung, dann mehr Wörter.
+                val takeCandidate = best.isBlank() || (candGood && !bestGood) ||
+                    (candGood == bestGood && (candCollisions.size < bestCollisions ||
+                        (candCollisions.size == bestCollisions && wordCount(candidate) > wordCount(best))))
+                if (takeCandidate) { best = candidate; bestCollisions = candCollisions.size }
+                // Konkretes Vermeidungs-Feedback für den (einzigen) nächsten Versuch.
+                val styleTics = RepetitionScan.styleTicViolations(candidate)
+                repeatHint = buildString {
+                    if (candCollisions.isNotEmpty()) {
+                        append("\n\nWIEDERHOLTE SÄTZE (im Buch bereits vorhanden – anders formulieren, NICHT wörtlich wiederholen):\n")
+                        append(candCollisions.take(6).joinToString("\n") { "- $it" })
+                    }
+                    if (styleTics.isNotEmpty()) {
+                        append("\n\nSTIL-TICKS (reduzieren):\n")
+                        append(styleTics.joinToString("\n") { "- $it" })
+                    }
+                }
+                if (ContentQuality.acceptsChapter(best, wordsPerChapter) && candGood && candCollisions.isEmpty()) break
             }
             // Prompt-Artefakte/Markdown raus + „menschlicher" machen, bevor gespeichert wird.
             var text = ContentQuality.humanizeProse(
