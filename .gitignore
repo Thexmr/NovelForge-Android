@@ -8,3 +8,10 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Signing (nie committen)
+*.jks
+*.keystore
+keystore.properties
+NovelForge-release.apk
+keystore.b64
