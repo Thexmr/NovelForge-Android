@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoStories
+import androidx.compose.material.icons.filled.Factory
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -35,6 +36,7 @@ private data class Tab(val route: String, val label: String, val icon: ImageVect
 private val tabs = listOf(
     Tab("dashboard", "Studio", Icons.Filled.AutoStories),
     Tab("new", "Neues Buch", Icons.Filled.Add),
+    Tab("factory", "Fabrik", Icons.Filled.Factory),
     Tab("settings", "Einstellungen", Icons.Filled.Settings),
 )
 
@@ -110,6 +112,7 @@ private fun AppNavHost(nav: NavHostController, vm: AppViewModel) {
                 nav.navigate("project/$id") { popUpTo("dashboard") }
             })
         }
+        composable("factory") { FactoryScreen(vm, onOpenProject = { id -> nav.navigate("project/$id") }) }
         composable("settings") { SettingsScreen(vm) }
         composable(
             "project/{id}",

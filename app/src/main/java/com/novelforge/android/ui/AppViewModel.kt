@@ -5,8 +5,12 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.novelforge.android.ai.AiClient
 import com.novelforge.android.ai.AiConfig
+import com.novelforge.android.data.FactoryState
+import com.novelforge.android.data.FactoryStore
 import com.novelforge.android.data.ProjectRepository
 import com.novelforge.android.data.SettingsStore
+import com.novelforge.android.domain.FactoryLimits
+import com.novelforge.android.domain.FactorySchedule
 import com.novelforge.android.domain.Project
 import com.novelforge.android.domain.SeriesContext
 import com.novelforge.android.generator.GenProgress
@@ -20,9 +24,19 @@ import kotlinx.coroutines.launch
 class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val settings = SettingsStore(app)
+    private val factory = FactoryStore(app)
 
     val config: StateFlow<AiConfig> =
         settings.configFlow.stateIn(viewModelScope, SharingStarted.Eagerly, AiConfig())
+
+    // --- KDP-Fabrik (Drossel + Kalender + Warteschlange) ---
+    val factoryState: StateFlow<FactoryState> = factory.state
+    fun factoryEnabled(on: Boolean) = factory.setEnabled(on)
+    fun factorySchedule(s: FactorySchedule) = factory.setSchedule(s)
+    fun factoryLimits(l: FactoryLimits) = factory.setLimits(l)
+    fun factoryEnqueue(id: String, priceEUR: Double = 4.99) = factory.enqueue(id, priceEUR)
+    fun factoryRemove(id: String) = factory.remove(id)
+    fun factoryMarkUploaded(id: String, draftUrl: String = "") = factory.markUploaded(id, draftUrl)
 
     // Startwert true → kein Aufblitzen des Assistenten für bereits eingerichtete Nutzer.
     val onboarded: StateFlow<Boolean> =
