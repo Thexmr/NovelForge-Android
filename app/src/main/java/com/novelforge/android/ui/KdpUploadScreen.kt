@@ -183,19 +183,22 @@ private fun autofillJs(project: Project): String {
         }
         function find(sels){ for(var i=0;i<sels.length;i++){ var e=document.querySelector(sels[i]); if(e) return e; } return null; }
         var filled=[];
-        var t=find(['#data-print-book-title','#data-ebook-title','input[name="title"]','input[id*="title" i]','input[aria-label*="Titel" i]']);
+        // PRIMÄR: an echter deutscher KDP-eBook-Seite live validierte IDs (#data-title …);
+        // Fallbacks: auto-kdp-Print + name-Attribute.
+        var t=find(['#data-title','#data-print-book-title','input[name="data[title]"]','input[name="title"]','input[id*="title" i]']);
         if(t && setVal(t,$title)) filled.push('Titel');
-        var s=find(['#data-print-book-subtitle','#data-ebook-subtitle','input[name="subtitle"]','input[id*="subtitle" i]']);
+        var s=find(['#data-subtitle','#data-print-book-subtitle','input[name="data[subtitle]"]','input[name="subtitle"]']);
         if(s && $subtitle && setVal(s,$subtitle)) filled.push('Untertitel');
-        // Autor (Vor-/Nachname) — auto-kdp: primary-author-first/last-name
-        var af=find(['#data-print-book-primary-author-first-name','input[name="authorFirstName"]']);
+        // Autor (Vor-/Nachname) — eBook: data-primary-author-first/last-name
+        var af=find(['#data-primary-author-first-name','#data-print-book-primary-author-first-name','input[name="data[primary_author][first_name]"]']);
         if(af && $authorFirst && setVal(af,$authorFirst)) filled.push('Autor-Vorname');
-        var al=find(['#data-print-book-primary-author-last-name','#data-ebook-primary-author-last-name','input[name="authorLastName"]']);
+        var al=find(['#data-primary-author-last-name','#data-print-book-primary-author-last-name','input[name="data[primary_author][last_name]"]']);
         if(al && setVal(al,$authorLast)) filled.push('Autor');
-        // Beschreibung: CKEditor-Quelltext aktivieren (auto-kdp: #cke_18), dann Textarea füllen.
+        // Beschreibung: KDP-CKEditor direkt per setData füllen (Instanz 'editor1'); Fallback: Quelltext+Textarea.
+        try{ if(window.CKEDITOR && CKEDITOR.instances){ var ck=Object.keys(CKEDITOR.instances); if(ck.length){ CKEDITOR.instances[ck[0]].setData($descHtml); filled.push('Beschreibung'); } } }catch(e){}
         var srcBtn=document.querySelector('#cke_18, a.cke_button__source, .cke_button__source');
-        if(srcBtn){ try{ srcBtn.click(); }catch(e){} }
-        var d=find(['#cke_1_contents > textarea','#cke_1_contents textarea','textarea[name="description"]','textarea[id*="description" i]','#cke_1_contents div[contenteditable="true"]','div[contenteditable="true"]']);
+        if(filled.indexOf('Beschreibung')<0 && srcBtn){ try{ srcBtn.click(); }catch(e){} }
+        var d=filled.indexOf('Beschreibung')<0 ? find(['#cke_1_contents > textarea','#cke_1_contents textarea','textarea[name="description"]','textarea[id*="description" i]','#cke_1_contents div[contenteditable="true"]','div[contenteditable="true"]']) : null;
         if(d){
           if(d.tagName==='DIV'){ d.innerHTML=$descHtml; d.dispatchEvent(new Event('input',{bubbles:true})); filled.push('Beschreibung'); }
           else if(setVal(d,$descPlain)) filled.push('Beschreibung');
@@ -203,7 +206,7 @@ private fun autofillJs(project: Project): String {
         var kws=($keywords||'').split(',').map(function(x){return x.trim();}).filter(Boolean).slice(0,7);
         var got=0;
         for(var k=0;k<kws.length;k++){
-          var kf=find(['#data-print-book-keywords-'+k,'#data-ebook-keywords-'+k,'input[name="keywords['+k+']"]','input[id*="keyword'+(k+1)+'" i]']);
+          var kf=find(['#data-keywords-'+k,'#data-print-book-keywords-'+k,'input[name="data[keywords]['+k+']"]','input[name="keywords['+k+']"]']);
           if(kf && setVal(kf,kws[k])) got++;
         }
         if(got>0) filled.push('Keywords('+got+')');
