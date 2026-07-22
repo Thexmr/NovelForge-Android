@@ -164,6 +164,10 @@ private fun autofillJs(project: Project): String {
     val descHtml = q(p.kdpDescription.replace("&", "&amp;").replace("<", "&lt;")
         .replace("\n\n", "</p><p>").replace("\n", "<br>").let { "<p>$it</p>" })
     val keywords = q(p.kdpKeywords)
+    // Autor: KDP trennt Vor- und Nachname (auto-kdp-validiert).
+    val ap = project.authorName.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+    val authorLast = q(if (ap.size > 1) ap.last() else (ap.firstOrNull() ?: ""))
+    val authorFirst = q(if (ap.size > 1) ap.dropLast(1).joinToString(" ") else "")
     return """
       (function(){
         function setVal(el,val){
@@ -179,11 +183,19 @@ private fun autofillJs(project: Project): String {
         }
         function find(sels){ for(var i=0;i<sels.length;i++){ var e=document.querySelector(sels[i]); if(e) return e; } return null; }
         var filled=[];
-        var t=find(['#data-print-book-title','input[name="title"]','input[id*="title" i]','input[aria-label*="Titel" i]','input[aria-label*="title" i]']);
+        var t=find(['#data-print-book-title','#data-ebook-title','input[name="title"]','input[id*="title" i]','input[aria-label*="Titel" i]']);
         if(t && setVal(t,$title)) filled.push('Titel');
-        var s=find(['#data-print-book-subtitle','input[name="subtitle"]','input[id*="subtitle" i]']);
+        var s=find(['#data-print-book-subtitle','#data-ebook-subtitle','input[name="subtitle"]','input[id*="subtitle" i]']);
         if(s && $subtitle && setVal(s,$subtitle)) filled.push('Untertitel');
-        var d=find(['textarea[name="description"]','textarea[id*="description" i]','textarea[aria-label*="Beschreibung" i]','div[contenteditable="true"]','#cke_1_contents div[contenteditable="true"]']);
+        // Autor (Vor-/Nachname) — auto-kdp: primary-author-first/last-name
+        var af=find(['#data-print-book-primary-author-first-name','input[name="authorFirstName"]']);
+        if(af && $authorFirst && setVal(af,$authorFirst)) filled.push('Autor-Vorname');
+        var al=find(['#data-print-book-primary-author-last-name','#data-ebook-primary-author-last-name','input[name="authorLastName"]']);
+        if(al && setVal(al,$authorLast)) filled.push('Autor');
+        // Beschreibung: CKEditor-Quelltext aktivieren (auto-kdp: #cke_18), dann Textarea füllen.
+        var srcBtn=document.querySelector('#cke_18, a.cke_button__source, .cke_button__source');
+        if(srcBtn){ try{ srcBtn.click(); }catch(e){} }
+        var d=find(['#cke_1_contents > textarea','#cke_1_contents textarea','textarea[name="description"]','textarea[id*="description" i]','#cke_1_contents div[contenteditable="true"]','div[contenteditable="true"]']);
         if(d){
           if(d.tagName==='DIV'){ d.innerHTML=$descHtml; d.dispatchEvent(new Event('input',{bubbles:true})); filled.push('Beschreibung'); }
           else if(setVal(d,$descPlain)) filled.push('Beschreibung');
@@ -191,7 +203,7 @@ private fun autofillJs(project: Project): String {
         var kws=($keywords||'').split(',').map(function(x){return x.trim();}).filter(Boolean).slice(0,7);
         var got=0;
         for(var k=0;k<kws.length;k++){
-          var kf=find(['#data-print-book-keywords-'+k,'input[name="keywords['+k+']"]','input[id*="keyword'+(k+1)+'" i]']);
+          var kf=find(['#data-print-book-keywords-'+k,'#data-ebook-keywords-'+k,'input[name="keywords['+k+']"]','input[id*="keyword'+(k+1)+'" i]']);
           if(kf && setVal(kf,kws[k])) got++;
         }
         if(got>0) filled.push('Keywords('+got+')');
