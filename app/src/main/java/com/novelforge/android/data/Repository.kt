@@ -29,6 +29,7 @@ class SettingsStore(private val context: Context) {
     private val keyApi = stringPreferencesKey("api_key")
     private val keyModel = stringPreferencesKey("model")
     private val keyWritingModel = stringPreferencesKey("writing_model")
+    private val keyVisionModel = stringPreferencesKey("vision_model")
     private val keyOnboarded = booleanPreferencesKey("onboarded")
 
     val configFlow: Flow<AiConfig> = context.dataStore.data.map { p ->
@@ -37,6 +38,7 @@ class SettingsStore(private val context: Context) {
             apiKey = p[keyApi] ?: "",
             model = p[keyModel] ?: AiConfig().model,
             writingModel = p[keyWritingModel] ?: "",
+            visionModel = p[keyVisionModel] ?: "",
         )
     }
 
@@ -49,6 +51,7 @@ class SettingsStore(private val context: Context) {
             p[keyApi] = config.apiKey
             p[keyModel] = config.model
             p[keyWritingModel] = config.writingModel
+            p[keyVisionModel] = config.visionModel
         }
     }
 

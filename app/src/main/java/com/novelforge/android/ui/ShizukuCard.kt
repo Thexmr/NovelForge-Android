@@ -42,6 +42,7 @@ import kotlinx.coroutines.withContext
 fun ShizukuCard(vm: AppViewModel) {
     val context = LocalContext.current
     val projects by vm.projects.collectAsState()
+    val aiConfig by vm.config.collectAsState()
     val scope = rememberCoroutineScope()
 
     var status by remember { mutableStateOf(ShizukuBridge.status(context)) }
@@ -95,7 +96,9 @@ fun ShizukuCard(vm: AppViewModel) {
                                 scope.launch {
                                     val ergebnis = withContext(Dispatchers.IO) {
                                         runCatching {
-                                            ShizukuKdpUploader.ladeHoch(context, p) { s ->
+                                            // KI-Konfiguration mitgeben: damit prüft die App per
+                                            // Bildschirmfoto, ob wirklich das Richtige im Feld steht.
+                                            ShizukuKdpUploader.ladeHoch(context, p, aiConfig) { s ->
                                                 anteil = s.anteil; meldung = s.text
                                             }
                                         }.getOrElse { "Fehlgeschlagen: ${it.message}" }

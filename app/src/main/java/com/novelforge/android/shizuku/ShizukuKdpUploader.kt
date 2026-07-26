@@ -49,9 +49,41 @@ object ShizukuKdpUploader {
      * Gibt eine Klartext-Zusammenfassung zurück (was gefüllt wurde, was der Mensch
      * noch prüfen muss).
      */
+    /**
+     * Füllt ein Feld und PRÜFT DANN MIT DEN AUGEN (Bildschirmfoto + multimodales Modell),
+     * ob wirklich der erwartete Wert drinsteht. Bei sichtbarer Abweichung wird das Feld
+     * geleert und einmal neu geschrieben. Ohne Vision-Modell verhält es sich wie bisher.
+     */
+    private suspend fun fuelleGeprueft(
+        ai: com.novelforge.android.ai.AiConfig?,
+        suche: String,
+        feldName: String,
+        wert: String,
+    ): Pair<Boolean, String> {
+        if (wert.isBlank()) return false to "leer"
+        if (!ChromeAutomation.fuelle(suche, wert)) return false to "Feld nicht gefunden"
+        if (ai == null) return true to "gefüllt (ohne Sicht-Prüfung)"
+        return when (ScreenVision.pruefeFeld(ai, feldName, wert)) {
+            true -> true to "gefüllt und visuell bestätigt"
+            null -> true to "gefüllt (Sicht-Prüfung nicht möglich)"
+            false -> {
+                // Sichtbar falsch → Feld leeren und genau einmal neu schreiben.
+                ChromeAutomation.tippeAuf(suche, timeoutMs = 6_000)
+                ShizukuBridge.exec("input keyevent KEYCODE_MOVE_END")
+                repeat(80) { ShizukuBridge.exec("input keyevent KEYCODE_DEL") }
+                ChromeAutomation.schreibe(wert)
+                when (ScreenVision.pruefeFeld(ai, feldName, wert)) {
+                    true -> true to "nach Korrektur visuell bestätigt"
+                    else -> true to "korrigiert, visuell unsicher"
+                }
+            }
+        }
+    }
+
     suspend fun ladeHoch(
         context: Context,
         project: Project,
+        aiConfig: com.novelforge.android.ai.AiConfig? = null,
         fortschritt: (Schritt) -> Unit = {},
     ): String = withContext(Dispatchers.IO) {
         val p = project.profile
@@ -74,22 +106,28 @@ object ShizukuKdpUploader {
                 "Die Dateien liegen bereit unter ${epub.parent}."
         }
 
-        fortschritt(Schritt("Trage Titel und Autor ein …", 0.35f))
+        fortschritt(Schritt("Trage Titel und Autor ein (mit Sicht-Kontrolle) …", 0.35f))
         val titel = p.kdpTitle.ifBlank { project.title }
         val gefuellt = mutableListOf<String>()
-        if (ChromeAutomation.fuelle("Buchtitel", titel)) gefuellt += "Titel"
-        if (p.kdpSubtitle.isNotBlank() && ChromeAutomation.fuelle("Untertitel", p.kdpSubtitle)) gefuellt += "Untertitel"
+        fuelleGeprueft(aiConfig, "Buchtitel", "Buchtitel", titel).let { if (it.first) gefuellt += "Titel (${it.second})" }
+        if (p.kdpSubtitle.isNotBlank()) {
+            fuelleGeprueft(aiConfig, "Untertitel", "Untertitel", p.kdpSubtitle).let { if (it.first) gefuellt += "Untertitel" }
+        }
 
         val teile = project.authorName.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
         val vorname = if (teile.size > 1) teile.dropLast(1).joinToString(" ") else ""
         val nachname = if (teile.size > 1) teile.last() else teile.firstOrNull().orEmpty()
-        if (vorname.isNotBlank() && ChromeAutomation.fuelle("Vorname", vorname)) gefuellt += "Autor-Vorname"
-        if (nachname.isNotBlank() && ChromeAutomation.fuelle("Nachname", nachname)) gefuellt += "Autor-Nachname"
+        if (vorname.isNotBlank()) {
+            fuelleGeprueft(aiConfig, "Vorname", "Vorname des Autors", vorname).let { if (it.first) gefuellt += "Autor-Vorname" }
+        }
+        if (nachname.isNotBlank()) {
+            fuelleGeprueft(aiConfig, "Nachname", "Nachname des Autors", nachname).let { if (it.first) gefuellt += "Autor-Nachname" }
+        }
 
         fortschritt(Schritt("Trage Beschreibung ein …", 0.55f))
         ChromeAutomation.scrolleRunter()
-        if (p.kdpDescription.isNotBlank() && ChromeAutomation.fuelle("Beschreibung", p.kdpDescription)) {
-            gefuellt += "Beschreibung"
+        if (p.kdpDescription.isNotBlank()) {
+            fuelleGeprueft(aiConfig, "Beschreibung", "Beschreibung", p.kdpDescription).let { if (it.first) gefuellt += "Beschreibung" }
         }
 
         fortschritt(Schritt("Trage Keywords ein …", 0.70f))
@@ -106,9 +144,22 @@ object ShizukuKdpUploader {
         ChromeAutomation.scrolleRunter()
         val gespeichert = ChromeAutomation.tippeAuf("Entwurf speichern", timeoutMs = 12_000)
 
+        // Schluss-Sichtprüfung: hat KDP den Entwurf wirklich angenommen oder steht eine
+        // Fehlermeldung / ein Pflichtfeld offen? Das sieht nur ein Blick auf den Bildschirm.
+        var sichtBefund = ""
+        if (aiConfig != null) {
+            delay(2500)
+            sichtBefund = ScreenVision.beschreibeBildschirm(
+                aiConfig,
+                "Sieh dir diesen Bildschirm der Amazon-KDP-Seite an. Wurde gespeichert, oder werden Fehler " +
+                    "bzw. fehlende Pflichtfelder angezeigt? Antworte in EINEM kurzen deutschen Satz.",
+            )
+        }
+
         fortschritt(Schritt("Fertig", 1f))
         buildString {
             append(if (gespeichert) "KDP-Entwurf gespeichert. " else "Felder gefüllt, Entwurf noch nicht gespeichert. ")
+            if (sichtBefund.isNotBlank()) append("Sicht-Prüfung: ${sichtBefund.take(200)} ")
             append("Übernommen: ${gefuellt.joinToString(", ").ifBlank { "nichts" }}. ")
             append("Manuskript: ${epub.absolutePath}")
             if (cover != null) append(" · Cover: ${cover.absolutePath}")

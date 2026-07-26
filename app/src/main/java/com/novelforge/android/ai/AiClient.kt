@@ -19,6 +19,10 @@ data class AiConfig(
     // Optionales, stärkeres Modell nur fürs Schreiben der Kapitel (zweistufig).
     // Leer = es wird durchgehend `model` verwendet.
     val writingModel: String = "",
+    // Multimodales Modell für die SICHT-KONTROLLE: die App macht ein Bildschirmfoto und
+    // lässt prüfen, ob wirklich das Richtige im Feld steht. Leer = `model` wird versucht.
+    // Verifiziert mit "qwen3.5:cloud"; jedes bildfähige (auch lokale) Modell geht.
+    val visionModel: String = "",
 ) {
     /** Lokaler Endpunkt (LAN/localhost/Emulator-Host) – braucht keinen API-Key. */
     val isLocal: Boolean get() = isLocalAiEndpoint(baseUrl)
