@@ -38,17 +38,54 @@ object CoverArtService {
     fun coverFile(context: Context, project: Project): File =
         File(File(context.filesDir, "covers").apply { mkdirs() }, "${project.id}.jpg")
 
-    /** Motiv-Prompt: hochwertig, mit Negativraum oben/unten für Typografie, OHNE Text im Bild. */
+    /**
+     * Objekt-Stillleben je Genre – NUR Objekte OHNE Schrift/Ziffern.
+     *
+     * Zwei in echten Läufen belegte Erkenntnisse:
+     * 1. Bild-KIs IGNORIEREN Verneinungen („keine Personen") – deshalb wird gar keine Szene
+     *    mit Menschen beschrieben, sondern ein konkretes Objekt. Gesichter/Hände sind die
+     *    stärksten KI-Verräter.
+     * 2. Objekte mit Schrift (Uhren, Bücher, Schilder) werden von Bild-KIs verkrüppelt
+     *    dargestellt und verraten sie sofort → konsequent schriftfreie Motive.
+     */
+    private val motifLibrary = listOf(
+        Regex("thriller|krimi|spannung|mord|crime", RegexOption.IGNORE_CASE) to
+            "Makro-Stillleben-Fotografie: eine einzelne Messing-Patronenhülse auf nassem Asphalt, Regentropfen, hartes Seitenlicht einer Straßenlaterne, kalte blaugraue Töne, Bokeh im Hintergrund",
+        Regex("horror|grusel|mystery|myster", RegexOption.IGNORE_CASE) to
+            "Stillleben-Fotografie: eine heruntergebrannte Kerze auf verwittertem Holz, aufsteigender Rauchfaden, tiefe Schatten, staubige Luft",
+        Regex("liebe|romance|romantik|herz", RegexOption.IGNORE_CASE) to
+            "Stillleben-Fotografie: zwei schlichte Keramiktassen auf einem Fensterbrett, weiches Morgenlicht durch beschlagenes Glas, warme entsättigte Töne, getrocknete Blüten",
+        Regex("fantasy|magie|drache|elfen", RegexOption.IGNORE_CASE) to
+            "Stillleben-Fotografie: ein verzierter Eisenschlüssel auf dunklem Samt, Kerzenlicht von der Seite, Staubkörner im Lichtstrahl",
+        Regex("science|sci-?fi|zukunft|space|raum", RegexOption.IGNORE_CASE) to
+            "Architekturfotografie: eine monolithische Betonstruktur gegen dichten Nebel, harte Kante, minimalistisch, kühles Zwielicht",
+        Regex("histor|mittelalter|krieg", RegexOption.IGNORE_CASE) to
+            "Stillleben-Fotografie: ein altes Messingfernrohr auf dunklem Eichenholz, Fensterlicht von links, Staub in der Luft",
+        Regex("kinder|jugend|märchen", RegexOption.IGNORE_CASE) to
+            "Stillleben-Fotografie: ein Papierboot auf stillem Wasser, weiches Nachmittagslicht, sanfte Pastelltöne",
+        Regex("sach|ratgeber|business|finanz|gesund", RegexOption.IGNORE_CASE) to
+            "Minimalistische Studio-Fotografie: eine klare geometrische Form aus mattem Material auf farbigem Papierhintergrund, gerichtetes Licht, sauberer Schlagschatten",
+    )
+
+    private fun motifFor(project: Project): String {
+        val hay = listOf(project.genre, project.subgenre, project.profile.premise).joinToString(" ")
+        return motifLibrary.firstOrNull { it.first.containsMatchIn(hay) }?.second
+            ?: "Stillleben-Fotografie: ein einzelner charakteristischer Gegenstand auf strukturierter Oberfläche, gerichtetes Seitenlicht, gedämpfte Farben"
+    }
+
+    /**
+     * Motiv-Prompt: AUSSCHLIESSLICH positiv formuliert (Verneinungen wirken bei Bild-KIs nicht),
+     * echte Fotografie statt Digital-Art, Objekt statt Person, mit Negativraum für die Typografie.
+     * Ein vom Generator abgeleitetes Objekt-Motiv (profile.coverPrompt) hat Vorrang.
+     */
     fun buildPrompt(project: Project): String {
-        val base = project.profile.coverPrompt.ifBlank { project.profile.premise }
-            .ifBlank { "${project.genre}: ${project.title}" }
+        val base = project.profile.coverPrompt.ifBlank { motifFor(project) }
         return listOf(
-            "Professionelles Buchcover-Motiv, cineastisch, starker Fokuspunkt, hochwertige Lichtstimmung",
             base,
-            "Genre ${project.genre}${if (project.subgenre.isNotBlank()) " / ${project.subgenre}" else ""}",
-            "vertikales Hochformat 2:3, ruhige kontrastarme Negativflächen oben und unten für später eingesetzte Typografie",
-            "ABSOLUT KEIN Text, keine Buchstaben, keine Zahlen, keine Wasserzeichen, keine Logos, keine Rahmen",
-        ).joinToString(", ").take(640)
+            "analoge 35mm-Kleinbildfotografie, feines Filmkorn, gedämpfte cineastische Farbabstufung, natürliches unperfektes Licht, geringe Schärfentiefe, sichtbare Materialtextur",
+            "vertikales Hochformat 2:3, das Objekt in der Bildmitte, ruhige dunkle Flächen im oberen Drittel und unteren Viertel",
+            "Editorial-Buchcover-Fotografie, ruhige Komposition, dokumentarische Bildsprache",
+        ).joinToString(", ").take(700)
     }
 
     /**
