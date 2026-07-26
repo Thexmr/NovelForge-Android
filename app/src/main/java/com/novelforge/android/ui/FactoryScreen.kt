@@ -127,6 +127,9 @@ fun FactoryScreen(vm: AppViewModel, onOpenProject: (String) -> Unit = {}) {
             }
         }
 
+        // Shizuku: autonomer Upload über das ECHTE Chrome (bestehende KDP-Anmeldung)
+        ShizukuCard(vm)
+
         // Einreihbare (fertige) Bücher
         val ready = projects.filter { it.status == ProjectStatus.COMPLETED && state.queue.none { q -> q.projectId == it.id } }
         if (ready.isNotEmpty()) {

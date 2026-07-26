@@ -81,6 +81,13 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
+    // Shizuku: verschafft der App ADB-Rechte (ohne Root). Damit kann NovelForge das
+    // ECHTE Chrome des Nutzers steuern – also die dort bereits bestehende Amazon-/KDP-
+    // Anmeldung nutzen, genau wie die Desktop-Version. Optional: fehlt Shizuku, läuft
+    // der Upload weiter über die eingebaute WebView.
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     testImplementation("junit:junit:4.13.2")

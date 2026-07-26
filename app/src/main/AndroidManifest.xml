@@ -29,5 +29,16 @@
             android:name=".service.GenerationService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <!-- Shizuku-Anbindung: nötig, damit Shizuku der App ADB-Rechte erteilen kann.
+             Ohne installiertes Shizuku bleibt der Provider wirkungslos, die App läuft
+             normal weiter (Upload dann über die eingebaute WebView). -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:multiprocess="false"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
     </application>
 </manifest>
