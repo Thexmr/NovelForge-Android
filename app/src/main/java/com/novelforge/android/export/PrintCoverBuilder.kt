@@ -145,12 +145,18 @@ object PrintCoverBuilder {
         val safe = px(SAFE_IN).toFloat()
         val trimW = px(m.format.breiteZoll).toFloat()
         val trimH = px(m.format.hoeheZoll).toFloat()
-        val rueckenB = m.rueckenPx.toFloat()
 
-        // Panels (Android: y = 0 OBEN)
+        // Panels (Android: y = 0 OBEN): links Rückseite, mittig Buchrücken, rechts
+        // Vorderseite – genau wie in der KDP-Cover-Vorlage.
+        //
+        // Die Vorderseite wird vom RECHTEN RAND her gesetzt und der Buchrücken bekommt
+        // den Rest dazwischen. Rundet man Beschnitt, Endformat und Rücken einzeln und
+        // addiert sie, kommt je nach Format ein Pixel zu viel heraus – die Vorderseite
+        // stünde dann über den Rand hinaus.
         val backX = bleed
         val spineX = bleed + trimW
-        val frontX = spineX + rueckenB
+        val frontX = w - bleed - trimW
+        val rueckenBreite = max(0f, frontX - spineX)
         val trimTop = bleed
 
         // 1) Motiv formatfüllend über die volle Fläche – Vorder- und Rückseite ein Bild.
@@ -178,6 +184,13 @@ object PrintCoverBuilder {
             backX + trimW - safe,
             trimTop + trimH - safe,
         )
+        // Der Rückseitentext darf NIE über sein Panel hinauslaufen. Sonst schiebt er sich
+        // unter den Buchrücken und wird dort abgeschnitten – im Druck sähe das aus wie
+        // ein Satzfehler. Die Begrenzung erzwingt das unabhängig davon, wie gut die
+        // Breitenschätzung des Umbruchs trifft.
+        c.save()
+        c.clipRect(backX + safe, trimTop, backX + safe + textBreite, trimTop + trimH)
+
         var y = trimTop + safe + 54f
         if (t.haken.isNotBlank()) {
             val hakenPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -226,14 +239,18 @@ object PrintCoverBuilder {
             )
         }
 
-        // 5) Barcode-Feld weiß freihalten – dort druckt Amazon den EAN.
-        c.drawRect(barcode, Paint().apply { color = Color.WHITE })
+        c.restore()
+
+        // 5) Barcode-Feld: KDP druckt hier den EAN und empfiehlt ausdrücklich, den
+        //    Bereich mit dem eigenen HINTERGRUND zu füllen statt mit Weiß – ein weißer
+        //    Kasten sähe im Regal wie ein Druckfehler aus. Freigehalten wird er trotzdem:
+        //    die Textausgabe oben endet vor dieser Zone.
 
         // 6) Buchrücken.
-        c.drawRect(spineX, 0f, spineX + rueckenB, h.toFloat(),
+        c.drawRect(spineX, 0f, spineX + rueckenBreite, h.toFloat(),
             Paint().apply { color = Color.argb(209, 8, 8, 13) })
         if (m.rueckentextErlaubt) {
-            zeichneRuecken(c, t, spineX, rueckenB, trimTop, trimH, safe)
+            zeichneRuecken(c, t, spineX, rueckenBreite, trimTop, trimH, safe)
         }
 
         // 7) Vorderseite: Titel, Linie, Autor.
@@ -336,6 +353,12 @@ object PrintCoverBuilder {
     /**
      * Schreibt das Cover als druckfertiges PDF in exakter Seitengröße.
      * KDP misst genau daran, ob Rücken und Beschnitt stimmen (1 Punkt = 1/72 Zoll).
+     *
+     * EINSCHRÄNKUNG: Androids PdfDocument kennt nur RGB. KDP verlangt für den Druck
+     * ein PDF mit CMYK-Profil und rechnet ein RGB-PDF selbst um – die Farben können
+     * dadurch leicht von der Vorschau abweichen. Wer das exakt haben will, baut das
+     * Druckcover auf dem Desktop (dort wird CMYK erzeugt). Das hier zu verschweigen
+     * wäre schlimmer als die Einschränkung selbst.
      */
     fun schreibePdf(bmp: Bitmap, m: Masse, ziel: File) {
         val breitePt = Math.round(m.gesamtBreiteZoll * 72)

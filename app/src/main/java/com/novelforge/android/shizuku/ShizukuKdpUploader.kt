@@ -243,7 +243,7 @@ object ShizukuKdpUploader {
             append("Übernommen: ${gefuellt.joinToString(", ").ifBlank { "nichts" }}. ")
             append("Manuskript: ${epub.absolutePath}")
             if (cover != null) append(" · Cover: ${cover.absolutePath}")
-            if (dateien.druckcoverPdf != null) append(" · Druckcover (PDF): ${dateien.druckcoverPdf!!.absolutePath}")
+            if (dateien.druckcoverPdf != null) append(" · Druckcover (PDF, RGB – KDP rechnet nach CMYK um): ${dateien.druckcoverPdf!!.absolutePath}")
             // Ehrliche Restliste: Der Shizuku-Weg füllt die Textfelder, aber Kategorien,
             // Verlagsrechte, Alterseinstufung und die Dateiauswahl gehen über Dialoge, die
             // sich über die Bedienoberfläche nicht zuverlässig steuern lassen. Das hier zu

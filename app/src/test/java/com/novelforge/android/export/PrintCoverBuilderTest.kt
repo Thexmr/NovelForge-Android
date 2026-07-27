@@ -26,6 +26,50 @@ class PrintCoverBuilderTest {
         assertEquals(2475, m.hoehePx)
     }
 
+    /**
+     * Werte aus der offiziellen KDP-Cover-Vorlage
+     * PAPERBACK_6.000x9.000_500_STANDARD_WHITE_de_DE:
+     *   Gesamtabmessungen 13.376" x 9.250"  (339.75 mm x 234.95 mm)
+     *   Buchrückenbreite  1.126"            (28.60 mm)
+     * Weicht die Rechnung davon ab, lehnt KDP das Cover ab.
+     */
+    @Test
+    fun `Masse stimmen exakt mit der offiziellen KDP-Vorlage 6x9 und 500 Seiten`() {
+        val m = PrintCoverBuilder.masse(500, PrintCoverBuilder.Format.F6x9, PrintCoverBuilder.Papier.WEISS)
+        assertEquals(1.126f, m.rueckenZoll, 0.0001f)
+        assertEquals(13.376f, m.gesamtBreiteZoll, 0.0001f)
+        assertEquals(9.250f, m.gesamtHoeheZoll, 0.0001f)
+        // Gegenprobe in Millimetern, wie sie in der Vorlage stehen.
+        // Locale.US erzwingen: auf einem deutschen System liefert %.2f sonst ein Komma.
+        fun mm(zoll: Float) = String.format(java.util.Locale.US, "%.2f", zoll * 25.4f)
+        assertEquals("339.75", mm(m.gesamtBreiteZoll))
+        assertEquals("234.95", mm(m.gesamtHoeheZoll))
+        assertEquals("28.60", mm(m.rueckenZoll))
+    }
+
+    @Test
+    fun `Panels fuellen die Leinwand genau aus`() {
+        // Links Rückseite, mittig Buchrücken, rechts Vorderseite – und die Teile müssen
+        // die Leinwand GENAU ausfüllen. Rundet man die Teile einzeln und addiert sie,
+        // steht die Vorderseite je nach Format ein Pixel über den Rand hinaus.
+        val faelle = listOf(
+            PrintCoverBuilder.Format.F6x9 to 500,
+            PrintCoverBuilder.Format.F5x8 to 48,
+            PrintCoverBuilder.Format.F5_5x8_5 to 300,
+        )
+        for ((format, seiten) in faelle) {
+            val m = PrintCoverBuilder.masse(seiten, format)
+            val bleed = Math.round(PrintCoverBuilder.BLEED_IN * PrintCoverBuilder.DPI)
+            val trimW = Math.round(format.breiteZoll * PrintCoverBuilder.DPI)
+            val spineX = bleed + trimW
+            val frontX = m.breitePx - bleed - trimW
+            assertTrue("${format.bez}: Buchrücken liegt nicht zwischen den Deckeln", frontX > spineX)
+            assertEquals("${format.bez}: Vorderseite endet nicht bündig", m.breitePx, frontX + trimW + bleed)
+            assertTrue("${format.bez}: gezeichneter Rücken weicht ab",
+                Math.abs((frontX - spineX) - m.rueckenPx) <= 1)
+        }
+    }
+
     @Test
     fun `Rueckentext erst ab 79 Seiten`() {
         assertFalse(PrintCoverBuilder.masse(60).rueckentextErlaubt)
