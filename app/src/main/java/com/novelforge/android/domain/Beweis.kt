@@ -227,7 +227,24 @@ object Beweis {
 
     // ---- Amazon-Metadaten ----
 
-    private val VERBOTEN = listOf("kostenlos", "gratis", "bestseller", "kindle", "ebook", "amazon", "taschenbuch")
+    private val VERBOTEN = listOf(
+        "kostenlos", "gratis", "bestseller", "kindle", "ebook", "amazon", "taschenbuch",
+        // Meta-Begriffe: beschreiben das Buch als Objekt statt seinen Inhalt. So sucht niemand.
+        "protagonist", "protagonistin", "hauptfigur", "autorin", "klappentext",
+    )
+
+    /**
+     * Wortstämme, die eine SUCHABSICHT beschreiben (Genre, Ton, Leseerwartung).
+     * Sie kommen im Romantext nicht vor und dürfen es auch nicht – sie sind trotzdem
+     * genau die Begriffe, die Leser bei Amazon eintippen.
+     */
+    private val SUCHVOKABULAR = listOf(
+        "thriller", "krimi", "roman", "fantasy", "horror", "grusel", "liebes", "romance",
+        "mystery", "sachbuch", "ratgeber", "jugend", "kinder", "dystop", "science",
+        "spann", "fessel", "packend", "unheimlich", "düster", "atmosph",
+        "psycholog", "wendung", "nervenkitzel", "abgründ", "deutsch",
+        "reihe", "band", "kurzgeschichte", "debüt",
+    )
 
     private fun metadaten(project: Project, volltext: String): List<Punkt> {
         val prof = project.profile
@@ -260,12 +277,17 @@ object Beweis {
         p += Punkt("Suchphrasen mehrwortig (echte Suchanfragen)", einWort.isEmpty(),
             if (einWort.isEmpty()) "alle mit 2+ Wörtern" else einWort.joinToString(" / "))
 
-        // Deckung: Jede Phrase muss mit mindestens einem inhaltstragenden Wort im BUCH
-        // stehen. Sonst wird das Buch für Suchen ausgespielt, die es nicht bedient –
-        // das kostet Ranking, weil Leser abspringen.
+        // Deckung: Jede Suchphrase muss etwas benennen, das das Buch WIRKLICH liefert –
+        // sonst kommen Leser über eine Suche, die das Buch nicht bedient, und springen ab.
+        //
+        // ABER: Genre-, Ton- und Leseerwartungswörter („psychothriller", „spannend")
+        // stehen naturgemäß NIE im Prosatext eines Romans. Sie hier zu verlangen wäre
+        // ein Denkfehler und würde gute Keywords verwerfen. Geprüft wird deshalb nur
+        // der KONKRETE Teil einer Phrase: Schauplatz, Figurentyp, Gegenstand.
         val ungedeckt = kws.filter { k ->
-            val w = k.split(" ").filter { it.length >= 5 }
-            w.isNotEmpty() && w.none { volltext.contains(it.lowercase()) }
+            val konkret = k.split(" ").map { it.lowercase() }
+                .filter { wort -> wort.length >= 5 && SUCHVOKABULAR.none { wort.contains(it) } }
+            konkret.isNotEmpty() && konkret.none { volltext.contains(it) }
         }
         p += Punkt("Suchphrasen durch den Buchtext gedeckt", ungedeckt.isEmpty(),
             if (ungedeckt.isEmpty()) "${kws.size} Phrasen im Text belegt" else ungedeckt.joinToString(" / "))
