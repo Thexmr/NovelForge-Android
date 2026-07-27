@@ -42,9 +42,10 @@ object ShizukuKdpUploader {
     private fun exportiereDateien(context: Context, project: Project): Dateien {
         val ziel = File("/sdcard/Download/NovelForge").apply { mkdirs() }
         val name = sicherName(project.title)
-        val epub = File(ziel, "$name.epub")
-        epub.writeBytes(ExportBuilder.epubBytes(project))
         val cover = CoverArtService.coverFile(context, project)
+        val epub = File(ziel, "$name.epub")
+        // Cover mitgeben, damit das Titelbild IM Buch steht und nicht nur daneben liegt.
+        epub.writeBytes(ExportBuilder.epubBytes(project, cover))
         val coverZiel = if (cover.exists()) {
             File(ziel, "$name-cover.jpg").also { cover.copyTo(it, overwrite = true) }
         } else null

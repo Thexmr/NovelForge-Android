@@ -67,7 +67,7 @@ fun KdpUploadScreen(project: Project, onBack: () -> Unit) {
             if (blocker != null) { status = "Upload gesperrt: $blocker"; return@withContext }
             val dir = File(context.cacheDir, "kdp").apply { mkdirs() }
             val epub = File(dir, "manuskript.epub")
-            runCatching { epub.writeBytes(ExportBuilder.epubBytes(project)) }
+            runCatching { epub.writeBytes(ExportBuilder.epubBytes(project, CoverArtService.coverFile(context, project))) }
                 .onSuccess { epubFile.value = epub }
             val existing = CoverArtService.coverFile(context, project)
             coverFile.value = if (existing.exists()) existing

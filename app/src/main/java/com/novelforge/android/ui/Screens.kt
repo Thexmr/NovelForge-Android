@@ -78,6 +78,7 @@ import com.novelforge.android.domain.Genres
 import com.novelforge.android.domain.Project
 import com.novelforge.android.domain.ProjectStatus
 import com.novelforge.android.data.KdpCredentials
+import com.novelforge.android.export.CoverArtService
 import com.novelforge.android.export.ExportBuilder
 import com.novelforge.android.ui.theme.Indigo
 import com.novelforge.android.ui.theme.NoirGold
@@ -683,7 +684,7 @@ fun ProjectScreen(
     }
     val epubLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/epub+zip")
-    ) { uri -> export(uri, "EPUB") { ExportBuilder.epubBytes(project) } }
+    ) { uri -> export(uri, "EPUB") { ExportBuilder.epubBytes(project, CoverArtService.coverFile(context, project)) } }
     val txtLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/plain")
     ) { uri -> export(uri, "Manuskript") { ExportBuilder.manuscriptText(project).toByteArray() } }

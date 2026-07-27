@@ -51,7 +51,13 @@ object ExportBuilder {
         return sb.toString().trim()
     }
 
-    fun epubBytes(project: Project): ByteArray {
+    /**
+     * @param cover Optionales Titelbild. Ist es gesetzt, wird es ins EPUB eingebettet
+     *   und als Cover ausgezeichnet. Ohne das enthält das Buch kein Titelbild – Lese-Apps
+     *   und die KDP-Vorschau zeigen dann nur die Textseite, obwohl das Cover längst
+     *   erzeugt wurde und als eigene Datei danebenliegt.
+     */
+    fun epubBytes(project: Project, cover: java.io.File? = null): ByteArray {
         val chapters = project.chapters.sortedBy { it.number }
         val bos = ByteArrayOutputStream()
         ZipOutputStream(bos).use { zos ->
@@ -73,16 +79,34 @@ object ExportBuilder {
 
             add("META-INF/container.xml", CONTAINER)
 
-            // Typografische Cover-Seite (Titel/Autor). Ein echtes Raster-Cover gibt es auf
-            // Android (noch) nicht – aber ein Buch ohne jede Titelseite wirkt unfertig, daher
-            // mindestens eine gestylte XHTML-Titelseite als erstes Spine-Element + CSS.
+            // Titelbild, falls vorhanden: das echte Cover kommt ins Buch. Ohne Bild bleibt
+            // die typografische Titelseite – ein Buch ohne jede Titelseite wirkt unfertig.
+            val coverDaten = runCatching {
+                cover?.takeIf { it.exists() && it.length() > 1024 }?.readBytes()
+            }.getOrNull()
+            val coverJpeg = coverDaten != null && coverDaten.size > 2 &&
+                coverDaten[0] == 0xFF.toByte() && coverDaten[1] == 0xD8.toByte()
+            val coverName = if (coverJpeg) "cover.jpg" else "cover.png"
+
             add("OEBPS/style.css", COVER_CSS)
-            add("OEBPS/cover.xhtml", coverXhtml(project))
+            add("OEBPS/cover.xhtml", coverXhtml(project, if (coverDaten != null) coverName else null))
+            if (coverDaten != null) {
+                zos.putNextEntry(ZipEntry("OEBPS/$coverName"))
+                zos.write(coverDaten)
+                zos.closeEntry()
+            }
 
             val manifest = StringBuilder()
             val spine = StringBuilder()
             manifest.append("    <item id=\"css\" href=\"style.css\" media-type=\"text/css\"/>\n")
             manifest.append("    <item id=\"cover\" href=\"cover.xhtml\" media-type=\"application/xhtml+xml\"/>\n")
+            // properties="cover-image" ist die Auszeichnung, an der Lese-Apps und Shops
+            // das Titelbild erkennen.
+            if (coverDaten != null) {
+                manifest.append("    <item id=\"coverimg\" href=\"$coverName\" media-type=\"")
+                    .append(if (coverJpeg) "image/jpeg" else "image/png")
+                    .append("\" properties=\"cover-image\"/>\n")
+            }
             spine.append("    <itemref idref=\"cover\"/>\n")
             // ID/Dateiname aus der Position (index+1) ableiten, NICHT aus ch.number.
             // ch.number ist nicht garantiert eindeutig -> doppelte Nummern erzeugten sonst
@@ -118,7 +142,15 @@ body.cover { margin: 0; padding: 0; text-align: center; }
 .cover-author { font-size: 1.2em; font-style: italic; }
 """
 
-    private fun coverXhtml(project: Project): String = """<?xml version="1.0" encoding="UTF-8"?>
+    private fun coverXhtml(project: Project, bildName: String? = null): String {
+        // Mit echtem Titelbild: nur das Bild, seitenfüllend – so machen es Verlage.
+        if (bildName != null) return """<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>${escapeXml(project.title)}</title>
+<style>html,body{margin:0;padding:0;height:100%;text-align:center}img{max-width:100%;max-height:100%}</style></head>
+<body><img src="$bildName" alt="${escapeXml(project.title)}"/></body>
+</html>"""
+        return """<?xml version="1.0" encoding="UTF-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head><title>${escapeXml(project.title)}</title><link rel="stylesheet" type="text/css" href="style.css"/></head>
 <body class="cover">
@@ -129,6 +161,7 @@ body.cover { margin: 0; padding: 0; text-align: center; }
   </div>
 </body>
 </html>"""
+    }
 
     /** PDF über das Android-Framework (PdfDocument + StaticLayout, mehrseitig, A4). */
     fun pdfBytes(project: Project): ByteArray {
