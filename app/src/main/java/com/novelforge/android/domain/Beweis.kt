@@ -269,7 +269,15 @@ object Beweis {
             absaetze.size >= 4, "${absaetze.size} Absätze")
 
         val kws = prof.kdpKeywords.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-        p += Punkt("7 Suchphrasen", kws.size == 7, "${kws.size} Phrasen")
+        // KDP erlaubt BIS ZU 7 Suchphrasen – 7 ist keine Pflicht. Sechs Phrasen, die das
+        // Buch wirklich trifft, sind besser als sieben mit einer erfundenen dabei. Deshalb
+        // ist die Untergrenze 5 verbindlich; ungenutzte Plätze werden nur genannt.
+        p += Punkt("Mindestens 5 Suchphrasen", kws.size >= 5, "${kws.size} von 7 möglichen Plätzen belegt")
+        if (kws.size < 7) {
+            p += Punkt("Alle 7 Suchplätze genutzt", false,
+                "${7 - kws.size} Platz/Plätze frei – jeder ungenutzte Platz ist eine Suche weniger",
+                pflicht = false)
+        }
         val schlecht = kws.filter { k -> k.length > 50 || VERBOTEN.any { k.contains(it, true) } }
         p += Punkt("Suchphrasen regelkonform (≤ 50 Zeichen, keine Rang-/Preiswörter)", schlecht.isEmpty(),
             if (schlecht.isEmpty()) "alle in Ordnung" else schlecht.joinToString(" / "))
