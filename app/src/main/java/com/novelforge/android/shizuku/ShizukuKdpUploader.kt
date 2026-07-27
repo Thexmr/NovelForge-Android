@@ -99,10 +99,23 @@ object ShizukuKdpUploader {
         fortschritt(Schritt("Öffne KDP in deinem Chrome …", 0.20f))
         ChromeAutomation.oeffne(KDP_NEUES_EBOOK)
 
-        // Anmeldung prüfen: erscheint die Anmeldeseite, muss der Mensch einmal ran.
+        // Verlangt Amazon einen per SMS geschickten Bestätigungscode (2FA), wird dieser
+        // automatisch aus dem Posteingang geholt und eingetragen – ohne dass die App die
+        // Berechtigung READ_SMS braucht (Shizuku liest den SMS-Speicher). Es werden nur
+        // Nachrichten ab JETZT betrachtet, damit kein alter Code verwendet wird.
+        val seit = System.currentTimeMillis()
+        val codeMeldung = runCatching { SmsCodeReader.codeEintragenFallsGefragt(seit) }.getOrNull()
+        if (codeMeldung != null) {
+            fortschritt(Schritt(codeMeldung, 0.25f))
+            delay(6000) // Amazon prüft den Code und leitet weiter
+        }
+
+        // Anmeldung prüfen: erscheint immer noch die Anmeldeseite (z. B. Passwort nötig),
+        // muss der Mensch einmal ran – das Passwort trägt die App bewusst nicht ein.
         val anmeldung = ChromeAutomation.warteAuf("anmelden", timeoutMs = 6_000)
         if (anmeldung != null) {
             return@withContext "Bitte einmalig in Chrome bei KDP anmelden – danach diesen Upload erneut starten. " +
+                (codeMeldung?.let { "($it) " } ?: "") +
                 "Die Dateien liegen bereit unter ${epub.parent}."
         }
 
