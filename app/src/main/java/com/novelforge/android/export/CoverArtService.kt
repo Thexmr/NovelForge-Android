@@ -12,6 +12,7 @@ import android.graphics.Shader
 import android.graphics.Typeface
 import com.novelforge.android.domain.Project
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -92,7 +93,8 @@ object CoverArtService {
      * Lädt das Motiv (1024×1638, Flux) und komponiert ein fertiges Cover mit Titel + Autor.
      * Wirft bei Netz-/Serverfehler; nie destruktiv.
      */
-    suspend fun generate(context: Context, project: Project, seed: Int = 42): File = withContext(Dispatchers.IO) {
+    /** Holt die Bilddaten für EINEN Versuch. */
+    private fun motivBytes(project: Project, seed: Int): ByteArray {
         val prompt = URLEncoder.encode(buildPrompt(project), "UTF-8")
         val url = "https://image.pollinations.ai/prompt/$prompt" +
             "?width=1024&height=1638&model=flux&nologo=true&enhance=true&seed=$seed"
@@ -101,18 +103,41 @@ object CoverArtService {
             if (!resp.isSuccessful) throw IOException("Cover-Server HTTP ${resp.code}")
             val bytes = resp.body?.bytes() ?: throw IOException("Leere Cover-Antwort")
             if (bytes.size < 1024) throw IOException("Cover zu klein (${bytes.size} Bytes) – vermutlich Fehlerseite")
-            val src = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                ?: throw IOException("Cover-Motiv nicht dekodierbar")
-            val composed = composeCover(
-                src,
-                title = project.profile.kdpTitle.ifBlank { project.title },
-                author = project.authorName.ifBlank { "Autor" },
-            )
-            val file = coverFile(context, project)
-            FileOutputStream(file).use { composed.compress(Bitmap.CompressFormat.JPEG, 90, it) }
-            src.recycle(); composed.recycle()
-            file
+            return bytes
         }
+    }
+
+    suspend fun generate(context: Context, project: Project, seed: Int = 42): File = withContext(Dispatchers.IO) {
+        // Der Bild-Dienst antwortet gelegentlich mit einem Fehler oder einer winzigen
+        // Fehlerseite. Bisher riss das die gesamte autonome Kette ab – das Buch war
+        // fertig geschrieben, scheiterte aber am Cover. Deshalb bis zu drei Anläufe,
+        // jeweils mit ANDERER Bildnummer: eine bestimmte Nummer kann serverseitig
+        // dauerhaft scheitern, derselbe Prompt mit anderer Nummer geht dann durch.
+        var bytes: ByteArray? = null
+        var letzterFehler: Exception? = null
+        for (versuch in 0 until 3) {
+            try {
+                bytes = motivBytes(project, seed + versuch * 1013)
+                break
+            } catch (e: Exception) {
+                letzterFehler = e
+                if (versuch < 2) delay((versuch + 1) * 3000L)   // 3 s, 6 s
+            }
+        }
+        val daten = bytes ?: throw IOException(
+            "Cover-Motiv nach 3 Versuchen nicht erhalten: ${letzterFehler?.message ?: "unbekannt"}")
+
+        val src = BitmapFactory.decodeByteArray(daten, 0, daten.size)
+            ?: throw IOException("Cover-Motiv nicht dekodierbar")
+        val composed = composeCover(
+            src,
+            title = project.profile.kdpTitle.ifBlank { project.title },
+            author = project.authorName.ifBlank { "Autor" },
+        )
+        val file = coverFile(context, project)
+        FileOutputStream(file).use { composed.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+        src.recycle(); composed.recycle()
+        file
     }
 
     /** Komponiert Motiv + Verläufe (in der Textzone nahezu deckend, überdeckt KI-Text) + Typografie. */
