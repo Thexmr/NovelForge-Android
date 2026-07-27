@@ -30,15 +30,43 @@ object ShizukuKdpUploader {
      * Legt EPUB und Cover im gemeinsamen Download-Ordner ab, damit Chromes Dateiauswahl
      * sie erreichen kann (Chrome sieht die App-internen Dateien sonst nicht).
      */
-    private fun exportiereDateien(context: Context, project: Project): Pair<File, File?> {
+    /** Alle Dateien eines Buches, die KDP braucht – plus die gerechneten Druckmaße. */
+    data class Dateien(
+        val epub: File,
+        val cover: File?,
+        val druckcover: File?,
+        val druckcoverPdf: File?,
+        val masse: com.novelforge.android.export.PrintCoverBuilder.Masse?,
+    )
+
+    private fun exportiereDateien(context: Context, project: Project): Dateien {
         val ziel = File("/sdcard/Download/NovelForge").apply { mkdirs() }
-        val epub = File(ziel, "${sicherName(project.title)}.epub")
+        val name = sicherName(project.title)
+        val epub = File(ziel, "$name.epub")
         epub.writeBytes(ExportBuilder.epubBytes(project))
         val cover = CoverArtService.coverFile(context, project)
         val coverZiel = if (cover.exists()) {
-            File(ziel, "${sicherName(project.title)}-cover.jpg").also { cover.copyTo(it, overwrite = true) }
+            File(ziel, "$name-cover.jpg").also { cover.copyTo(it, overwrite = true) }
         } else null
-        return epub to coverZiel
+
+        // DRUCKCOVER: Vorderseite + Buchrücken + Rückseite mit Verkaufstext, in
+        // KDP-Maßen. Der Buchrücken folgt der Seitenzahl – deshalb wird er aus dem
+        // Manuskript gerechnet. Kein Abbruchgrund: das eBook geht auch ohne Taschenbuch.
+        var wrap: File? = null
+        var wrapPdf: File? = null
+        var masse: com.novelforge.android.export.PrintCoverBuilder.Masse? = null
+        if (coverZiel != null) {
+            runCatching {
+                val r = com.novelforge.android.export.PrintCoverBuilder.baueFuer(
+                    project = project,
+                    motiv = coverZiel,
+                    jpegZiel = File(ziel, "$name-druckcover.jpg"),
+                    pdfZiel = File(ziel, "$name-druckcover.pdf"),
+                )
+                wrap = r.jpeg; wrapPdf = r.pdf; masse = r.masse
+            }
+        }
+        return Dateien(epub, coverZiel, wrap, wrapPdf, masse)
     }
 
     private fun sicherName(s: String) =
@@ -92,9 +120,29 @@ object ShizukuKdpUploader {
         if (!status.bereit) return@withContext "Shizuku nicht bereit: ${status.hinweis}"
         if (!ChromeAutomation.chromeVorhanden()) return@withContext "Chrome ist auf diesem Gerät nicht installiert."
 
-        fortschritt(Schritt("Exportiere Buch und Cover …", 0.10f))
-        val (epub, cover) = runCatching { exportiereDateien(context, project) }
+        fortschritt(Schritt("Exportiere Buch, Cover und Druckcover …", 0.10f))
+        val dateien = runCatching { exportiereDateien(context, project) }
             .getOrElse { return@withContext "Export fehlgeschlagen: ${it.message}" }
+        val epub = dateien.epub
+        val cover = dateien.cover
+        if (dateien.masse != null) {
+            fortschritt(Schritt("Druckcover: ${dateien.masse!!.kurzfassung}", 0.14f))
+        }
+
+        // SELBSTBEWEIS vor dem Upload: Das Programm misst sein eigenes Ergebnis –
+        // Umfang, EPUB-Struktur, Cover-Maße, Keyword-Deckung, Verkaufstext. Fällt eine
+        // Pflichtprüfung durch, wird NICHT hochgeladen: ein fehlerhaftes Buch im echten
+        // KDP-Konto kostet mehr Zeit, als der Abbruch hier spart.
+        fortschritt(Schritt("Prüfe das eigene Ergebnis …", 0.16f))
+        val nachweis = com.novelforge.android.domain.Beweis.belege(
+            project = project, epub = epub, cover = cover,
+            druckcover = dateien.druckcover, druckcoverMasse = dateien.masse,
+            zielSeiten = project.targetPageCount,
+        )
+        if (!nachweis.bestanden) {
+            return@withContext "Selbstprüfung nicht bestanden – deshalb kein Upload.\n\n" + nachweis.text
+        }
+        fortschritt(Schritt("Selbstprüfung bestanden (${nachweis.alle.size} Nachweise)", 0.18f))
 
         fortschritt(Schritt("Öffne KDP in deinem Chrome …", 0.20f))
         ChromeAutomation.oeffne(KDP_NEUES_EBOOK)
@@ -191,6 +239,7 @@ object ShizukuKdpUploader {
             append("Übernommen: ${gefuellt.joinToString(", ").ifBlank { "nichts" }}. ")
             append("Manuskript: ${epub.absolutePath}")
             if (cover != null) append(" · Cover: ${cover.absolutePath}")
+            if (dateien.druckcoverPdf != null) append(" · Druckcover (PDF): ${dateien.druckcoverPdf!!.absolutePath}")
             append(". Manuskript und Cover im Reiter „Inhalt“ hochladen (Dateiauswahl), Preis prüfen – veröffentlicht wird nichts automatisch.")
         }
     }

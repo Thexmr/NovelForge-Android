@@ -84,11 +84,30 @@ object RepetitionScan {
             .map { val s = spelling[it.key] ?: it.key; SentenceStat(s, it.value, wc(s)) }
     }
 
-    /** Egregiöse, veröffentlichungs-blockierende Wiederholungen (distinktiv ODER gehämmert). */
-    fun blockingRepeatedSentences(chapters: List<String>): List<String> =
-        repeatedSentenceStats(chapters, minimumOccurrences = 2)
-            .filter { (it.words >= 7 && it.occurrences >= 2) || it.occurrences >= 5 }
+    /**
+     * Egregiöse, veröffentlichungs-blockierende Wiederholungen (distinktiv ODER gehämmert).
+     *
+     * Berücksichtigt, WO ein Satz wiederkehrt: Eine Wiederholung innerhalb eines Kapitels
+     * ist meist ein bewusstes Stilmittel (Refrain, Echo), eine über das halbe Buch verteilte
+     * dagegen ein Textbaustein-Fehler. Ohne diese Unterscheidung wurden literarisch gewollte
+     * Wiederholungen fälschlich als Mangel gemeldet.
+     */
+    fun blockingRepeatedSentences(chapters: List<String>): List<String> {
+        fun kapitelMit(satz: String): List<Int> =
+            chapters.indices.filter { chapters[it].contains(satz, ignoreCase = true) }
+
+        return repeatedSentenceStats(chapters, minimumOccurrences = 2)
+            .filter { stat ->
+                val k = kapitelMit(stat.sentence)
+                when {
+                    k.size <= 1 -> false                                   // Stilmittel im selben Kapitel
+                    k.size == 2 && (k.last() - k.first()) <= 1
+                        && stat.words <= 8 -> false                        // kurzes Leitmotiv in Nachbarkapiteln
+                    else -> (stat.words >= 7 && stat.occurrences >= 2) || stat.occurrences >= 5
+                }
+            }
             .map { it.sentence }
+    }
 
     // MARK: - Kollision eines NEUEN Entwurfs mit dem bisherigen Manuskript ----------
 
