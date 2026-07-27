@@ -241,7 +241,14 @@ object ShizukuKdpUploader {
             append("Manuskript: ${epub.absolutePath}")
             if (cover != null) append(" · Cover: ${cover.absolutePath}")
             if (dateien.druckcoverPdf != null) append(" · Druckcover (PDF): ${dateien.druckcoverPdf!!.absolutePath}")
-            append(". Manuskript und Cover im Reiter „Inhalt“ hochladen (Dateiauswahl), Preis prüfen – veröffentlicht wird nichts automatisch.")
+            // Ehrliche Restliste: Der Shizuku-Weg füllt die Textfelder, aber Kategorien,
+            // Verlagsrechte, Alterseinstufung und die Dateiauswahl gehen über Dialoge, die
+            // sich über die Bedienoberfläche nicht zuverlässig steuern lassen. Das hier zu
+            // verschweigen wäre schlimmer als der fehlende Schritt: der Entwurf bliebe
+            // unvollständig liegen, ohne dass jemand davon weiß.
+            append(". NOCH VON HAND: Manuskript und Cover im Reiter „Inhalt“ hochladen ")
+            append("(Dateiauswahl), Kategorie wählen, Verlagsrechte und Alterseinstufung ")
+            append("setzen, Preis prüfen. Veröffentlicht wird nichts automatisch.")
         }
     }
 
