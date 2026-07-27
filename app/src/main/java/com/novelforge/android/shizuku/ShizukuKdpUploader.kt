@@ -58,9 +58,12 @@ object ShizukuKdpUploader {
         var masse: com.novelforge.android.export.PrintCoverBuilder.Masse? = null
         if (coverZiel != null) {
             runCatching {
+                // Rohes Motiv bevorzugen: das fertige eBook-Cover trägt den Titel bereits
+                // eingebrannt, er erschiene auf dem Wrap sonst ein zweites Mal.
+                val motiv = CoverArtService.motivFile(context, project).takeIf { it.exists() } ?: coverZiel
                 val r = com.novelforge.android.export.PrintCoverBuilder.baueFuer(
                     project = project,
-                    motiv = coverZiel,
+                    motiv = motiv,
                     jpegZiel = File(ziel, "$name-druckcover.jpg"),
                     pdfZiel = File(ziel, "$name-druckcover.pdf"),
                 )

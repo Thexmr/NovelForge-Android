@@ -199,7 +199,13 @@ object PrintCoverBuilder {
         }
         // Der Verkaufstext darf das Barcode-Feld nicht berühren.
         val untereGrenze = barcode.top - 70f
-        for (absatz in t.verkaufstext.split("\n").map { it.trim() }.filter { it.isNotEmpty() }) {
+        // Der Haken IST der erste Satz des Klappentexts. Stünde er groß oben und gleich
+        // darunter noch einmal als erster Absatz, läse sich die Rückseite wie ein Fehler.
+        fun norm(x: String) = x.split(Regex("\\s+")).filter { it.isNotBlank() }.joinToString(" ").lowercase()
+        val hakenNorm = norm(t.haken)
+        val absaetze = t.verkaufstext.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+            .filterIndexed { i, abs -> !(i == 0 && hakenNorm.isNotBlank() && norm(abs) == hakenNorm) }
+        for (absatz in absaetze) {
             if (y > untereGrenze) break
             for (zeile in umbrich(absatz, textPaint, textBreite)) {
                 if (y > untereGrenze) break

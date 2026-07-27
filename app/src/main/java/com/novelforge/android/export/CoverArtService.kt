@@ -36,6 +36,10 @@ object CoverArtService {
         .readTimeout(120, TimeUnit.SECONDS)
         .build()
 
+    /** Rohes, textfreies Motiv – Grundlage für das Druckcover. */
+    fun motivFile(context: Context, project: Project): File =
+        File(coverFile(context, project).absolutePath.replace(Regex("\\.jpe?g$"), "") + "-motiv.jpg")
+
     fun coverFile(context: Context, project: Project): File =
         File(File(context.filesDir, "covers").apply { mkdirs() }, "${project.id}.jpg")
 
@@ -136,6 +140,10 @@ object CoverArtService {
         )
         val file = coverFile(context, project)
         FileOutputStream(file).use { composed.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+        // Das ROHE, textfreie Motiv separat sichern. Das Druckcover braucht genau dieses
+        // Bild – nimmt man das fertige eBook-Cover, ist dessen Titel schon eingebrannt und
+        // erscheint auf dem Wrap ein zweites Mal quer über Rück- und Vorderseite.
+        runCatching { FileOutputStream(motivFile(context, project)).use { it.write(daten) } }
         src.recycle(); composed.recycle()
         file
     }
