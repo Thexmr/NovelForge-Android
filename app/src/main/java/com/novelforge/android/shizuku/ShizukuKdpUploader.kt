@@ -99,11 +99,26 @@ object ShizukuKdpUploader {
         fortschritt(Schritt("Öffne KDP in deinem Chrome …", 0.20f))
         ChromeAutomation.oeffne(KDP_NEUES_EBOOK)
 
+        // Steht die Anmeldeseite und sind Zugangsdaten hinterlegt, meldet sich die App
+        // selbst an. Ohne hinterlegte Daten bleibt es bei der bestehenden Chrome-Sitzung.
+        val seit = System.currentTimeMillis()
+        val zugang = com.novelforge.android.data.KdpCredentials.lesen(context)
+        if (zugang != null && ChromeAutomation.warteAuf("passwort", timeoutMs = 5_000) != null) {
+            fortschritt(Schritt("Melde mit hinterlegten Zugangsdaten an …", 0.22f))
+            // E-Mail (nur, wenn das Feld noch leer/sichtbar ist), dann Passwort.
+            ChromeAutomation.fuelle("mail", zugang.first, timeoutMs = 5_000)
+            ChromeAutomation.tippeAuf("weiter", timeoutMs = 4_000)
+            delay(2500)
+            ChromeAutomation.fuelle("passwort", zugang.second, timeoutMs = 6_000)
+            ChromeAutomation.tippeAuf("angemeldet bleiben", timeoutMs = 3_000)
+            ChromeAutomation.tippeAuf("anmelden", timeoutMs = 5_000)
+            delay(6000)
+        }
+
         // Verlangt Amazon einen per SMS geschickten Bestätigungscode (2FA), wird dieser
         // automatisch aus dem Posteingang geholt und eingetragen – ohne dass die App die
         // Berechtigung READ_SMS braucht (Shizuku liest den SMS-Speicher). Es werden nur
         // Nachrichten ab JETZT betrachtet, damit kein alter Code verwendet wird.
-        val seit = System.currentTimeMillis()
         val codeMeldung = runCatching { SmsCodeReader.codeEintragenFallsGefragt(seit) }.getOrNull()
         if (codeMeldung != null) {
             fortschritt(Schritt(codeMeldung, 0.25f))

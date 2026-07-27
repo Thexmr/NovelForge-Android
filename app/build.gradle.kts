@@ -88,6 +88,10 @@ dependencies {
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
 
+    // Verschlüsselte Ablage der KDP-Zugangsdaten (hardwaregestützter Schlüssel im
+    // Android-Keystore). Nur dafür – niemals Klartext in Einstellungen oder Dateien.
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     testImplementation("junit:junit:4.13.2")

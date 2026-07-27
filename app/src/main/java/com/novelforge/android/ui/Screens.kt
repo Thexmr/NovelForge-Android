@@ -77,6 +77,7 @@ import com.novelforge.android.domain.Chapter
 import com.novelforge.android.domain.Genres
 import com.novelforge.android.domain.Project
 import com.novelforge.android.domain.ProjectStatus
+import com.novelforge.android.data.KdpCredentials
 import com.novelforge.android.export.ExportBuilder
 import com.novelforge.android.ui.theme.Indigo
 import com.novelforge.android.ui.theme.NoirGold
@@ -523,13 +524,21 @@ fun SettingsScreen(vm: AppViewModel) {
     var apiKey by rememberSaveable { mutableStateOf("") }
     var model by rememberSaveable { mutableStateOf(AiConfig().model) }
     var writingModel by rememberSaveable { mutableStateOf("") }
+    var visionModel by rememberSaveable { mutableStateOf("") }
     var seeded by rememberSaveable { mutableStateOf(false) }
+    // KDP-Zugangsdaten: bewusst NICHT rememberSaveable – das Passwort soll nicht im
+    // Zustands-Bündel des Systems landen. Nach dem Speichern werden die Felder geleert.
+    val context = LocalContext.current
+    var kdpEmail by remember { mutableStateOf("") }
+    var kdpPasswort by remember { mutableStateOf("") }
+    var kdpHinterlegt by remember { mutableStateOf(KdpCredentials.vorhanden(context)) }
     // Gespeicherte Werte EINMAL übernehmen, sobald die echte (vom Default abweichende) Konfiguration
     // aus DataStore eintrifft – laufende Eingaben bleiben erhalten.
     LaunchedEffect(config) {
         if (!seeded && config != AiConfig()) {
             baseUrl = config.baseUrl; model = config.model
             apiKey = config.apiKey; writingModel = config.writingModel
+            visionModel = config.visionModel
             seeded = true
         }
     }
@@ -570,10 +579,52 @@ fun SettingsScreen(vm: AppViewModel) {
         Text("Leer = überall dasselbe Modell. Sonst wird dieses (stärkere) Modell nur fürs Schreiben der Kapitel genutzt.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
+        OutlinedTextField(visionModel, { visionModel = it }, label = { Text("Bild-Modell (optional)") },
+            singleLine = true, modifier = Modifier.fillMaxWidth())
+        Text("Damit prüft die App per Bildschirmfoto, ob beim KDP-Upload wirklich das Richtige im Feld steht. Leer = Hauptmodell. Bewährt: qwen3.5:cloud.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
         Button(
-            onClick = { vm.saveSettings(AiConfig(baseUrl.trim(), apiKey.trim(), model.trim(), writingModel.trim())) },
+            onClick = {
+                vm.saveSettings(AiConfig(baseUrl.trim(), apiKey.trim(), model.trim(),
+                    writingModel.trim(), visionModel.trim()))
+            },
             modifier = Modifier.fillMaxWidth().height(50.dp)
         ) { Text("Speichern") }
+
+        // ---- KDP-Anmeldung (optional) ------------------------------------------
+        SectionLabel("KDP-Anmeldung")
+        Text(
+            if (kdpHinterlegt)
+                "Zugangsdaten sind hinterlegt. Die App meldet sich damit selbst an, wenn die Chrome-Sitzung abgelaufen ist. Kommt ein SMS-Code, liest sie ihn aus (Shizuku) – sonst gibst du ihn einmal ein."
+            else
+                "Optional. Ohne Zugangsdaten nutzt die App die bestehende Anmeldung in deinem Chrome – das genügt meistens und ist sicherer.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedTextField(kdpEmail, { kdpEmail = it }, label = { Text("Amazon-E-Mail") },
+            singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(kdpPasswort, { kdpPasswort = it }, label = { Text("Amazon-Passwort") },
+            visualTransformation = PasswordVisualTransformation(), singleLine = true,
+            modifier = Modifier.fillMaxWidth())
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = {
+                    KdpCredentials.speichern(context, kdpEmail, kdpPasswort)
+                    kdpEmail = ""; kdpPasswort = ""
+                    kdpHinterlegt = KdpCredentials.vorhanden(context)
+                },
+                enabled = kdpEmail.isNotBlank() && kdpPasswort.isNotBlank(),
+                modifier = Modifier.weight(1f),
+            ) { Text("Sicher speichern") }
+            if (kdpHinterlegt) {
+                OutlinedButton(
+                    onClick = { KdpCredentials.loeschen(context); kdpHinterlegt = false },
+                    modifier = Modifier.weight(1f),
+                ) { Text("Löschen") }
+            }
+        }
+        Text("Gespeichert wird ausschließlich verschlüsselt auf diesem Gerät (Android-Keystore) – nicht in Klartext, nicht in Protokollen, und es verlässt das Gerät nie.",
+            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
         StatusBadge(if (configOk) ProjectStatus.COMPLETED else ProjectStatus.FAILED)
         Text(
