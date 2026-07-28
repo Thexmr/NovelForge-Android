@@ -53,7 +53,20 @@ object CoverArtService {
      * 2. Objekte mit Schrift (Uhren, Bücher, Schilder) werden von Bild-KIs verkrüppelt
      *    dargestellt und verraten sie sofort → konsequent schriftfreie Motive.
      */
+    // Kunstrichtung je Genre – abgeleitet aus den Gestaltungskonventionen, an denen Leser
+    // ein Genre im Regal und im Thumbnail sofort erkennen: Dark Romance/Erotik lebt von
+    // schwarzem Grund mit EINEM Kontrastton und Objekt-Symbolik statt expliziter
+    // Darstellung, Romantasy von dorniger Ornamentik mit metallischem Akzent, Gothic von
+    // dunkler Strenge mit einem einzigen kalten Lichtakzent.
     private val motifLibrary = listOf(
+        Regex("dark ?romance|erotik|erotic|spicy", RegexOption.IGNORE_CASE) to
+            "Makro-Stillleben-Fotografie auf schwarzem Grund mit einem einzigen kräftigen Kontrastton in Bordeaux: eine seidene Krawatte über einer Stuhllehne, weiches Gegenlicht, tiefe Schatten, edel und andeutend",
+        Regex("romantasy", RegexOption.IGNORE_CASE) to
+            "Stillleben-Fotografie: dornige Ranken um einen alten Messingschlüssel auf dunklem Samt, ein metallischer Goldakzent, Kerzenlicht von der Seite, Staubkörner im Lichtstrahl",
+        Regex("gothic|psychologischer horror", RegexOption.IGNORE_CASE) to
+            "Architekturfotografie: ein schmiedeeisernes Tor im Nebel, streng symmetrisch, ein einziger kalter Lichtakzent, körniger Nebel, klamme Feuchtigkeit",
+        Regex("viral", RegexOption.IGNORE_CASE) to
+            "Makro-Stillleben-Fotografie: ein Handy mit schwarzem Bildschirm auf einem zerwühlten Bettlaken, kaltes Morgenlicht durch einen Vorhangspalt, ein einzelner warmer Lichtpunkt, unruhige Schärfentiefe",
         Regex("thriller|krimi|spannung|mord|crime", RegexOption.IGNORE_CASE) to
             "Makro-Stillleben-Fotografie: eine einzelne Messing-Patronenhülse auf nassem Asphalt, Regentropfen, hartes Seitenlicht einer Straßenlaterne, kalte blaugraue Töne, Bokeh im Hintergrund",
         Regex("horror|grusel|mystery|myster", RegexOption.IGNORE_CASE) to

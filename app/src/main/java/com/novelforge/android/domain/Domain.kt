@@ -72,6 +72,10 @@ data class Project(
 object Genres {
     val all = listOf(
         "Liebesroman", "New Adult", "Dark Romance", "Romantasy", "Fantasy",
+        // Viral Hit ist kein klassisches Genre, sondern eine Arbeitsweise: das Konzept
+        // wird auf Weitererzählbarkeit gebaut (starke Gefühlsreaktion, Titel der sich
+        // selbst verkauft, Haken in einem Satz).
+        "Viral Hit",
         "Thriller", "Psychothriller", "Krimi", "Regionalkrimi", "Cosy Crime",
         "Science Fiction", "Historischer Roman", "Jugendbuch", "Erotik",
         "Spannung", "Drama", "Abenteuer", "Mystery"
