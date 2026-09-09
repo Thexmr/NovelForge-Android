@@ -53,7 +53,20 @@ object CoverArtService {
      * 2. Objekte mit Schrift (Uhren, Bücher, Schilder) werden von Bild-KIs verkrüppelt
      *    dargestellt und verraten sie sofort → konsequent schriftfreie Motive.
      */
+    // Kunstrichtung je Genre – abgeleitet aus den Gestaltungskonventionen, an denen Leser
+    // ein Genre im Regal und im Thumbnail sofort erkennen: Dark Romance/Erotik lebt von
+    // schwarzem Grund mit EINEM Kontrastton und Objekt-Symbolik statt expliziter
+    // Darstellung, Romantasy von dorniger Ornamentik mit metallischem Akzent, Gothic von
+    // dunkler Strenge mit einem einzigen kalten Lichtakzent.
     private val motifLibrary = listOf(
+        Regex("dark ?romance|erotik|erotic|spicy", RegexOption.IGNORE_CASE) to
+            "tief weinroter bis fast schwarzer Grund mit weichem Leuchten, ein üppiger Kranz aus dunkelroten Rosen rahmt die BILDRÄNDER, IN DER BILDMITTE liegt ausschließlich glatter dunkler Samtstoff in weichen Falten, darauf ein einzelnes goldenes Schmuckstück, schwebende weiße Federn, reine Objektfotografie eines Stilllebens, opulent und edel",
+        Regex("romantasy", RegexOption.IGNORE_CASE) to
+            "opulente Landschaftsszene mit goldenem Ornamentrahmen an den Bildkanten, Hell-Dunkel-Teilung zwischen warmem Goldlicht und tiefem Violett, IN DER BILDMITTE eine ferne gotische Burg auf einem Berg, Ranken mit dunklen Rosen an den Rändern, märchenhafte Landschaftsmalerei ohne Lebewesen",
+        Regex("gothic|psychologischer horror", RegexOption.IGNORE_CASE) to
+            "Architekturfotografie: ein schmiedeeisernes Tor im Nebel, streng symmetrisch, ein einziger kalter Lichtakzent, körniger Nebel, klamme Feuchtigkeit",
+        Regex("viral", RegexOption.IGNORE_CASE) to
+            "Makro-Stillleben-Fotografie: ein Handy mit schwarzem Bildschirm auf einem zerwühlten Bettlaken, kaltes Morgenlicht durch einen Vorhangspalt, ein einzelner warmer Lichtpunkt, unruhige Schärfentiefe",
         Regex("thriller|krimi|spannung|mord|crime", RegexOption.IGNORE_CASE) to
             "Makro-Stillleben-Fotografie: eine einzelne Messing-Patronenhülse auf nassem Asphalt, Regentropfen, hartes Seitenlicht einer Straßenlaterne, kalte blaugraue Töne, Bokeh im Hintergrund",
         Regex("horror|grusel|mystery|myster", RegexOption.IGNORE_CASE) to
@@ -190,7 +203,7 @@ object CoverArtService {
         }
         val lines = wrap(up, titlePaint, W * 0.84f)
         val lineH = titlePaint.textSize * 1.08f
-        var y = H * 0.14f + titlePaint.textSize
+        var y = H * 0.26f + titlePaint.textSize
         for (ln in lines) { c.drawText(ln, W / 2f, y, titlePaint); y += lineH }
 
         // 4) Gold-Akzentlinie unter dem Titel.
@@ -206,7 +219,13 @@ object CoverArtService {
             letterSpacing = 0.14f
             setShadowLayer(5f, 0f, 2f, Color.argb(160, 0, 0, 0))
         }
-        c.drawText(author.uppercase(), W / 2f, H * 0.905f, authorPaint)
+        // AUTOR OBEN – so bauen es die erfolgreichen Titel im Regal. Der Blick auf reale
+        // Cover (Dark Romance, Erotik, Fantasy) zeigt durchgehend den Autornamen als
+        // schmale, weit gesperrte Zeile ganz oben, der Titel bekommt die Fläche darunter.
+        // Der Name stammt IMMER aus den Angaben im Programm.
+        c.drawText(author.uppercase(), W / 2f, H * 0.085f, authorPaint)
+        c.drawRect(W / 2f - 95f, H * 0.105f, W / 2f + 95f, H * 0.105f + 3f,
+            Paint().apply { color = Color.rgb(201, 162, 75) })
         return bmp
     }
 
